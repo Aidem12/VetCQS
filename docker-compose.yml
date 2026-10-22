@@ -1,0 +1,40 @@
+# Sistema Veterinaria · servidor + PostgreSQL
+# Uso:  cp .env.ejemplo .env   (y cambiar la contraseña)
+#       docker compose up -d --build
+services:
+  bd:
+    image: postgres:16
+    container_name: vet-bd
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: veterinaria
+      POSTGRES_USER: veterinaria
+      POSTGRES_PASSWORD: ${BD_PASSWORD}
+      TZ: America/Mexico_City
+    volumes:
+      - datos-bd:/var/lib/postgresql/data
+      - ./bd:/docker-entrypoint-initdb.d:ro      # crea tablas y datos la primera vez
+    ports:
+      - "5432:5432"                              # solo para pgAdmin/DBeaver en la red local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veterinaria -d veterinaria"]
+      interval: 5s
+      retries: 10
+
+  servidor:
+    build: ./servidor
+    container_name: vet-servidor
+    restart: unless-stopped
+    depends_on:
+      bd:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://bd:5432/veterinaria
+      SPRING_DATASOURCE_USERNAME: veterinaria
+      SPRING_DATASOURCE_PASSWORD: ${BD_PASSWORD}
+      TZ: America/Mexico_City
+    ports:
+      - "8080:8080"                              # caja y consultorio se conectan aquí
+
+volumes:
+  datos-bd:
