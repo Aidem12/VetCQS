@@ -55,6 +55,16 @@ java PruebaPerifericos /dev/usb/lp0   # o IP:9100 si la impresora es de red
 
 Anotar el resultado en la tabla de la sección 3 del documento de la semana 3.
 
+## 5. Iteración 1: catálogos y núcleo de venta
+
+El alcance, el plan semanal, los endpoints y los criterios de aceptación están
+documentados en [`docs/ITERACION-1.md`](docs/ITERACION-1.md) y
+[`docs/PLAN-SEMANA-4.md`](docs/PLAN-SEMANA-4.md).
+
+La API de la iteración 1 permite consultar y administrar el catálogo, crear ventas
+y registrar cobros. El turno de caja, el módulo clínico, la facturación y la
+autenticación se implementarán en las iteraciones posteriores.
+
 ## Trabajo con Git
 
 - `main`: solo versiones entregadas al final de cada iteración.

@@ -112,8 +112,9 @@ CREATE TABLE venta (
     cancelada_por         INT           REFERENCES usuario(id),
     motivo_cancelacion    VARCHAR(200),
     CHECK (descuento = 0 OR descuento_autorizado_por IS NOT NULL),       -- RF-21
-    CHECK (estado <> 'CANCELADA' OR cancelada_por IS NOT NULL),          -- RF-06
-    CHECK (estado <> 'PAGADA' OR turno_id IS NOT NULL)
+    CHECK (estado <> 'CANCELADA' OR cancelada_por IS NOT NULL)            -- RF-06
+    -- El turno se asociará en la Iteración 3; la Iteración 1 permite cobrar
+    -- sin corte de caja para validar primero el núcleo del punto de venta.
 );
 
 CREATE TABLE venta_detalle (

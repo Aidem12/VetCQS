@@ -8,6 +8,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 
 /** Primera entidad mapeada; sirve de modelo para las demás tablas en la iteración 1. */
 @Entity
@@ -59,4 +61,15 @@ public class Producto {
     public void setManejaCaducidad(boolean manejaCaducidad) { this.manejaCaducidad = manejaCaducidad; }
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
+
+    @PrePersist
+    @PreUpdate
+    private void normalizar() {
+        if (tipo != null) {
+            tipo = tipo.trim().toUpperCase();
+        }
+        if (codigoBarras != null && codigoBarras.isBlank()) {
+            codigoBarras = null;
+        }
+    }
 }
