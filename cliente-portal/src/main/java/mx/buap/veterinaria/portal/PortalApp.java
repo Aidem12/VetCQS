@@ -80,7 +80,8 @@ public class PortalApp extends Application {
         try {
             HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVER + path))
                     .timeout(Duration.ofSeconds(8)).header("Content-Type","application/json");
-            return http.sendAsync(method.equals("GET") ? b.GET().build() : b.method(method, HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+            return http.sendAsync(method.equals("GET") ? b.GET().build() : b.method(method, HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString())
+                    .exceptionally(ignored -> HttpResponseStub.error());
         } catch (Exception e) { error.setText("No se pudo conectar al servidor."); return CompletableFuture.completedFuture(HttpResponseStub.error()); }
     }
     private static String escape(String s) { return s.replace("\\","\\\\").replace("\"","\\\""); }
