@@ -17,5 +17,11 @@ ALTER TABLE factura ADD COLUMN IF NOT EXISTS respuesta_mock TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_factura_idempotencia
   ON factura (idempotencia) WHERE idempotencia IS NOT NULL;
 
+-- Turno/corte ciego: compatible con instalaciones creadas antes de Iteración 3.
+ALTER TABLE turno ADD COLUMN IF NOT EXISTS efectivo_contado NUMERIC(10,2);
+ALTER TABLE turno ADD COLUMN IF NOT EXISTS efectivo_esperado NUMERIC(10,2);
+CREATE INDEX IF NOT EXISTS ix_turno_cajero_apertura ON turno (cajero_id, apertura DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_turno_abierto ON turno ((cierre IS NULL)) WHERE cierre IS NULL;
+
 -- Recuperación: respalde la base antes de aplicar; las columnas/indexes pueden
 -- eliminarse individualmente si se revierte la iteración.

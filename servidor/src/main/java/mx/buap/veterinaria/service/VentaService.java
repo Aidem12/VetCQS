@@ -26,8 +26,10 @@ import mx.buap.veterinaria.repository.VentaRepository;
 import mx.buap.veterinaria.repository.ConsultaRepository;
 import mx.buap.veterinaria.repository.MovimientoInventarioRepository;
 import mx.buap.veterinaria.repository.UsuarioRepository;
+import mx.buap.veterinaria.repository.TurnoRepository;
 import mx.buap.veterinaria.model.MovimientoInventario;
 import mx.buap.veterinaria.model.Usuario;
+import mx.buap.veterinaria.model.Turno;
 
 @Service
 public class VentaService {
@@ -38,15 +40,18 @@ public class VentaService {
     private final ConsultaRepository consultas;
     private final MovimientoInventarioRepository movimientos;
     private final UsuarioRepository usuarios;
+    private final TurnoRepository turnos;
 
     public VentaService(VentaRepository ventas, ProductoRepository productos, PagoRepository pagos,
-            ConsultaRepository consultas, MovimientoInventarioRepository movimientos, UsuarioRepository usuarios) {
+            ConsultaRepository consultas, MovimientoInventarioRepository movimientos, UsuarioRepository usuarios,
+            TurnoRepository turnos) {
         this.ventas = ventas;
         this.productos = productos;
         this.pagos = pagos;
         this.consultas = consultas;
         this.movimientos = movimientos;
         this.usuarios = usuarios;
+        this.turnos = turnos;
     }
 
     @Transactional
@@ -109,6 +114,8 @@ public class VentaService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La venta ya no está disponible para cobro");
         }
         BigDecimal pagado = BigDecimal.ZERO;
+        Turno turno = turnos.findByCierreIsNull().orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.CONFLICT, "Abra un turno antes de cobrar"));
         for (PagoRequest request : requests) {
             if (request.forma() == Pago.Forma.EFECTIVO
                     && (request.recibido() == null || request.recibido().compareTo(request.monto()) < 0)) {
@@ -148,6 +155,7 @@ public class VentaService {
             }
         }
         venta.setEstado(Venta.Estado.PAGADA);
+        venta.setTurno(turno);
         return ventas.save(venta);
     }
 }

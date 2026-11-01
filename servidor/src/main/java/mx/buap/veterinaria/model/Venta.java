@@ -43,6 +43,10 @@ public class Venta {
     @JoinColumn(name = "consulta_id")
     private Consulta consulta;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "turno_id")
+    private Turno turno;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
@@ -63,6 +67,8 @@ public class Venta {
     public void setEstado(Estado estado) { this.estado = estado; }
     public Consulta getConsulta() { return consulta; }
     public void setConsulta(Consulta consulta) { this.consulta = consulta; }
+    public Turno getTurno() { return turno; }
+    public void setTurno(Turno turno) { this.turno = turno; }
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
     public BigDecimal getDescuento() { return descuento; }

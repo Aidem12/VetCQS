@@ -1,13 +1,13 @@
 -- =============================================================
 -- Sistema Veterinaria · Datos de prueba (semana 3)
--- Las contraseñas se cifran con BCrypt cuando se implemente el inicio
--- de sesión (iteración 4, semana 7). Mientras tanto quedan marcadas.
+-- Los seeds no contienen contraseñas operativas: se cargan inactivos y deben
+-- ser rotados por un administrador mediante /api/empleados antes de usarse.
 -- =============================================================
 
-INSERT INTO usuario (nombre, usuario, contrasena_hash, rol) VALUES
- ('Ana López',      'ana',   'PENDIENTE_BCRYPT', 'CAJERO'),
- ('Dr. Luis Ruiz',  'lruiz', 'PENDIENTE_BCRYPT', 'VETERINARIO'),
- ('Carmen Díaz',    'admin', 'PENDIENTE_BCRYPT', 'ADMINISTRADOR');
+INSERT INTO usuario (nombre, usuario, contrasena_hash, rol, activo) VALUES
+ ('Ana López',      'ana',   'DISABLED_SEED_NO_PASSWORD', 'CAJERO', false),
+ ('Dr. Luis Ruiz',  'lruiz', 'DISABLED_SEED_NO_PASSWORD', 'VETERINARIO', false),
+ ('Carmen Díaz',    'admin', 'DISABLED_SEED_NO_PASSWORD', 'ADMINISTRADOR', false);
 
 INSERT INTO duenio (nombre, telefono, correo) VALUES
  ('María Hernández', '2221234567', 'maria.h@correo.com'),

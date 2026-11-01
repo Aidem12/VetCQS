@@ -5,6 +5,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -51,7 +53,7 @@ public class CajaApp extends Application {
     private static final String ATENDIO = "Juan Martinez Perez";
     private static final DateTimeFormatter FORMATO_FECHA_TICKET =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private HttpClient http;
     private final ObjectMapper json = new ObjectMapper();
     private final ObservableList<Renglon> carrito = FXCollections.observableArrayList();
     private final Label estadoServidor = new Label("Servidor: verificando...");
@@ -70,6 +72,10 @@ public class CajaApp extends Application {
 
     @Override
     public void start(Stage ventana) {
+        // Conserva la cookie JSESSIONID entre login y llamadas protegidas.
+        CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+        java.net.CookieHandler.setDefault(cookies);
+        http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).cookieHandler(cookies).build();
         ventanaPrincipal = ventana;
         Label marca = new Label("SISTEMA VETERINARIA");
         marca.setStyle("-fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold;");
