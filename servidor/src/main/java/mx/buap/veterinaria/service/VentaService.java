@@ -14,6 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import mx.buap.veterinaria.dto.PagoRequest;
 import mx.buap.veterinaria.dto.VentaRequest;
+import mx.buap.veterinaria.dto.PrecuentaRequest;
+import mx.buap.veterinaria.model.Consulta;
 import mx.buap.veterinaria.model.Pago;
 import mx.buap.veterinaria.model.Producto;
 import mx.buap.veterinaria.model.Venta;
@@ -21,6 +23,7 @@ import mx.buap.veterinaria.model.VentaDetalle;
 import mx.buap.veterinaria.repository.ProductoRepository;
 import mx.buap.veterinaria.repository.PagoRepository;
 import mx.buap.veterinaria.repository.VentaRepository;
+import mx.buap.veterinaria.repository.ConsultaRepository;
 
 @Service
 public class VentaService {
@@ -28,11 +31,29 @@ public class VentaService {
     private final VentaRepository ventas;
     private final ProductoRepository productos;
     private final PagoRepository pagos;
+    private final ConsultaRepository consultas;
 
-    public VentaService(VentaRepository ventas, ProductoRepository productos, PagoRepository pagos) {
+    public VentaService(VentaRepository ventas, ProductoRepository productos, PagoRepository pagos,
+            ConsultaRepository consultas) {
         this.ventas = ventas;
         this.productos = productos;
         this.pagos = pagos;
+        this.consultas = consultas;
+    }
+
+    @Transactional
+    public Venta crearPrecuenta(PrecuentaRequest request) {
+        Consulta consulta = consultas.findById(request.consultaId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Consulta no encontrada"));
+        VentaRequest ventaRequest = new VentaRequest(
+                request.detalles().stream()
+                        .map(d -> new VentaRequest.DetalleRequest(d.productoId(), d.cantidad()))
+                        .toList(), BigDecimal.ZERO);
+        Venta venta = crear(ventaRequest);
+        venta.setConsulta(consulta);
+        venta.setEstado(Venta.Estado.PRECUENTA);
+        return ventas.save(venta);
     }
 
     @Transactional
@@ -75,7 +96,8 @@ public class VentaService {
     public Venta cobrar(Integer id, List<PagoRequest> requests) {
         Venta venta = ventas.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Venta no encontrada"));
-        if (venta.getEstado() != Venta.Estado.ABIERTA) {
+        if (venta.getEstado() != Venta.Estado.ABIERTA
+                && venta.getEstado() != Venta.Estado.PRECUENTA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La venta ya no está disponible para cobro");
         }
         BigDecimal pagado = BigDecimal.ZERO;

@@ -6,6 +6,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 
@@ -42,6 +44,13 @@ import javafx.stage.Window;
 public class CajaApp extends Application {
 
     static final String SERVIDOR = System.getProperty("servidor", "http://localhost:8080");
+    private static final String NOMBRE_NEGOCIO = "VetCQS";
+    private static final String DIRECCION_SUCURSAL =
+            "Sucursal Puebla 11 Sur\nAv 11 Sur 12914 GPE HIDALGO Puebla, PUE.";
+    private static final String CAJA = "Caja 1";
+    private static final String ATENDIO = "Juan Martinez Perez";
+    private static final DateTimeFormatter FORMATO_FECHA_TICKET =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final ObjectMapper json = new ObjectMapper();
     private final ObservableList<Renglon> carrito = FXCollections.observableArrayList();
@@ -262,9 +271,12 @@ public class CajaApp extends Application {
                     return;
                 }
                 if (!servidorDisponible) {
+                    List<Renglon> venta = List.copyOf(carrito);
+                    String folio = "LOCAL-" + System.currentTimeMillis();
                     carrito.clear();
                     actualizarTotal();
-                    mostrarPedidoCompletado(importe, efectivo);
+                    mostrarPedidoCompletado(importe, efectivo, folio);
+                    mostrarTicket(venta, importe, efectivo, folio);
                     return;
                 }
                 String cuerpo = json.writeValueAsString(VentaRequest.desde(carrito, BigDecimal.ZERO));
@@ -280,9 +292,11 @@ public class CajaApp extends Application {
                         request("POST", "/api/ventas/" + id + "/cobro", pago).thenAccept(cobrada ->
                                 Platform.runLater(() -> {
                                     if (cobrada.statusCode() == 200) {
+                                        List<Renglon> venta = List.copyOf(carrito);
                                         carrito.clear();
                                         actualizarTotal();
-                                        mostrarPedidoCompletado(importe, efectivo);
+                                        mostrarPedidoCompletado(importe, efectivo, "V-" + id);
+                                        mostrarTicket(venta, importe, efectivo, "V-" + id);
                                     } else {
                                         mostrarOperacionFallida(cobrada);
                                     }
@@ -299,7 +313,7 @@ public class CajaApp extends Application {
         });
     }
 
-    private void mostrarPedidoCompletado(BigDecimal importe, BigDecimal efectivo) {
+    private void mostrarPedidoCompletado(BigDecimal importe, BigDecimal efectivo, String folio) {
         BigDecimal cambio = efectivo.subtract(importe).setScale(2);
         Label titulo = new Label("Pedido completado");
         titulo.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #21865B;");
@@ -318,6 +332,67 @@ public class CajaApp extends Application {
         dialogo.getDialogPane().setContent(contenido);
         dialogo.getDialogPane().setStyle("-fx-background-color: #F3F6F9;");
         dialogo.showAndWait();
+    }
+
+    private void mostrarTicket(List<Renglon> venta, BigDecimal importe,
+            BigDecimal efectivo, String folio) {
+        VBox ticket = new VBox(7);
+        ticket.setPadding(new Insets(18));
+        ticket.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8;");
+
+        Label negocio = new Label(NOMBRE_NEGOCIO);
+        negocio.setMaxWidth(Double.MAX_VALUE);
+        negocio.setAlignment(javafx.geometry.Pos.CENTER);
+        negocio.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #17324D;");
+        Label datos = new Label(DIRECCION_SUCURSAL + "\n" + CAJA
+                + "\nAtendió: " + ATENDIO
+                + "\nFecha: " + LocalDateTime.now().format(FORMATO_FECHA_TICKET)
+                + "\nFolio: " + folio);
+        datos.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 12px; "
+                + "-fx-text-fill: #425466;");
+        ticket.getChildren().addAll(negocio, datos, separadorTicket());
+
+        for (Renglon renglon : venta) {
+            Label producto = new Label(String.format(Locale.ROOT, "%s x %s%n$%s",
+                    renglon.getCantidad().stripTrailingZeros().toPlainString(),
+                    renglon.getNombre(), formatearDinero(renglon.getImporte())));
+            producto.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 12px; "
+                    + "-fx-text-fill: #425466;");
+            ticket.getChildren().add(producto);
+        }
+
+        ticket.getChildren().addAll(separadorTicket(),
+                lineaTicket("TOTAL", importe),
+                lineaTicket("EFECTIVO", efectivo),
+                lineaTicket("CAMBIO", efectivo.subtract(importe)));
+        Label agradecimiento = new Label("Gracias por su compra");
+        agradecimiento.setMaxWidth(Double.MAX_VALUE);
+        agradecimiento.setAlignment(javafx.geometry.Pos.CENTER);
+        agradecimiento.setStyle("-fx-font-size: 12px; -fx-text-fill: #21865B;");
+        ticket.getChildren().add(agradecimiento);
+
+        Alert dialogo = new Alert(Alert.AlertType.INFORMATION);
+        dialogo.setTitle("Ticket");
+        dialogo.setHeaderText(null);
+        dialogo.setGraphic(null);
+        prepararDialogo(dialogo);
+        dialogo.getDialogPane().setContent(ticket);
+        dialogo.getDialogPane().setStyle("-fx-background-color: #F3F6F9;");
+        dialogo.getDialogPane().setMinWidth(360);
+        dialogo.showAndWait();
+    }
+
+    private static Label separadorTicket() {
+        Label separador = new Label("--------------------------------");
+        separador.setStyle("-fx-font-family: 'Consolas'; -fx-text-fill: #718294;");
+        return separador;
+    }
+
+    private static Label lineaTicket(String concepto, BigDecimal valor) {
+        Label linea = new Label(concepto + ": $" + formatearDinero(valor));
+        linea.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 13px; "
+                + "-fx-font-weight: bold; -fx-text-fill: #17324D;");
+        return linea;
     }
 
     private void revisarInventario() {

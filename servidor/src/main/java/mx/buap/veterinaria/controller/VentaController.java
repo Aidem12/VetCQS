@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import mx.buap.veterinaria.dto.PagoRequest;
 import mx.buap.veterinaria.dto.VentaRequest;
+import mx.buap.veterinaria.dto.PrecuentaRequest;
 import mx.buap.veterinaria.model.Venta;
 import mx.buap.veterinaria.service.VentaService;
 
@@ -31,6 +32,12 @@ public class VentaController {
     @ResponseStatus(HttpStatus.CREATED)
     public Venta crear(@Valid @RequestBody VentaRequest request) {
         return servicio.crear(request);
+    }
+
+    @PostMapping("/precuentas")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Venta crearPrecuenta(@Valid @RequestBody PrecuentaRequest request) {
+        return servicio.crearPrecuenta(request);
     }
 
     @PostMapping("/{id}/cobro")

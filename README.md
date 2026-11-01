@@ -71,3 +71,9 @@ autenticación se implementarán en las iteraciones posteriores.
 - `develop`: integración diaria.
 - `feature/<modulo>-<tema>` (por ejemplo `feature/caja-cobro`): una rama por tarea; se une a `develop` con *pull request* revisado por otro integrante.
 - Mensajes de commit en español y en presente: `Agrega búsqueda por código de barras`.
+
+## Iteración 2
+
+El módulo clínico y la precuenta están documentados en
+[`docs/ITERACION-2.md`](docs/ITERACION-2.md). El cliente de consultorio se ejecuta desde
+`cliente-consultorio` y se conecta al mismo servidor de la caja.

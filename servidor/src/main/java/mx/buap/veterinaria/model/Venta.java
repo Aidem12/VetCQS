@@ -15,6 +15,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.FetchType;
 
 @Entity
 @Table(name = "venta")
@@ -36,6 +39,10 @@ public class Venta {
     @Column(nullable = false, length = 10)
     private Estado estado = Estado.ABIERTA;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "consulta_id")
+    private Consulta consulta;
+
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal subtotal = BigDecimal.ZERO;
 
@@ -54,6 +61,8 @@ public class Venta {
     public LocalDateTime getFecha() { return fecha; }
     public Estado getEstado() { return estado; }
     public void setEstado(Estado estado) { this.estado = estado; }
+    public Consulta getConsulta() { return consulta; }
+    public void setConsulta(Consulta consulta) { this.consulta = consulta; }
     public BigDecimal getSubtotal() { return subtotal; }
     public void setSubtotal(BigDecimal subtotal) { this.subtotal = subtotal; }
     public BigDecimal getDescuento() { return descuento; }
