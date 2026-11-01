@@ -16,6 +16,7 @@ import java.util.Optional;
 import javax.net.ssl.SSLSession;
 import java.util.concurrent.CompletableFuture;
 import java.nio.file.Path;
+import java.nio.file.Files;
 
 /** Punto de entrada único; el CookieManager conserva JSESSIONID durante toda la sesión. */
 public class PortalApp extends Application {
@@ -83,7 +84,10 @@ public class PortalApp extends Application {
                             .map(c -> c.getName() + "=" + c.getValue()).findFirst().orElse("")
                     : "";
             Path raiz = Path.of(System.getProperty("user.dir")).toAbsolutePath().getParent();
-            ProcessBuilder proceso = new ProcessBuilder("mvn.cmd", "javafx:run",
+            Path maven = Path.of(System.getProperty("user.home"),
+                    "Tools", "apache-maven-3.10.0", "bin", "mvn.cmd");
+            String ejecutable = Files.exists(maven) ? maven.toString() : "mvn.cmd";
+            ProcessBuilder proceso = new ProcessBuilder(ejecutable, "javafx:run",
                     "-Dservidor=" + SERVER, "-Dsesion=" + cookie);
             proceso.directory(raiz.resolve(modulo).toFile());
             proceso.inheritIO().start();
