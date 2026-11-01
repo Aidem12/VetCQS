@@ -72,7 +72,10 @@ public class PortalApp extends Application {
         }
     }
 
-    private void logout() { request("POST", "/api/auth/logout", "").thenRun(this::showLogin); }
+    private void logout() {
+        request("POST", "/api/auth/logout", "")
+            .thenRun(() -> Platform.runLater(this::showLogin));
+    }
     private CompletableFuture<HttpResponse<String>> request(String method, String path, String body) {
         try {
             HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVER + path))
