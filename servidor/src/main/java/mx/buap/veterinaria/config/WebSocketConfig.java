@@ -13,6 +13,7 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.beans.factory.annotation.Value;
 
 /**
  * Canal de avisos a caja (RNF-10). Cuando el consultorio envía una precuenta,
@@ -24,6 +25,8 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final AvisosCaja avisos;
+    @Value("${app.allowed-origins:http://localhost:8080}")
+    private String allowedOrigin;
 
     public WebSocketConfig(AvisosCaja avisos) {
         this.avisos = avisos;
@@ -31,7 +34,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(avisos, "/ws/caja").setAllowedOriginPatterns("*");
+        registry.addHandler(avisos, "/ws/caja")
+                .setAllowedOriginPatterns(allowedOrigin.split("\\s*,\\s*"));
     }
 
     @Component

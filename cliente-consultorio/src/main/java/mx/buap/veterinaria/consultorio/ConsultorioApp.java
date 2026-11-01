@@ -20,7 +20,7 @@ import javafx.stage.Stage;
 
 public class ConsultorioApp extends Application {
     static final String SERVIDOR = System.getProperty("servidor", "http://localhost:8080");
-    private final HttpClient http = HttpClient.newHttpClient();
+    private final HttpClient http;
     private final ObjectMapper json = new ObjectMapper();
     private final Label estado = new Label("Servidor: verificando...");
     private final ListView<JsonNode> duenos = new ListView<>();
@@ -37,6 +37,21 @@ public class ConsultorioApp extends Application {
     private JsonNode duenoSeleccionado;
     private JsonNode mascotaSeleccionada;
     private JsonNode consultaSeleccionada;
+
+    public ConsultorioApp() {
+        java.net.CookieManager cookies = new java.net.CookieManager(
+                null, java.net.CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+        String sesion = System.getProperty("sesion", "");
+        if (!sesion.isBlank()) {
+            try {
+                cookies.getCookieStore().add(URI.create(SERVIDOR),
+                        java.net.HttpCookie.parse(sesion).get(0));
+            } catch (IllegalArgumentException ignored) {
+                // El servidor rechazará la sesión inválida con 401/403.
+            }
+        }
+        http = HttpClient.newBuilder().cookieHandler(cookies).build();
+    }
 
     @Override
     public void start(Stage ventana) {

@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.Optional;
 import javax.net.ssl.SSLSession;
 import java.util.concurrent.CompletableFuture;
+import java.nio.file.Path;
 
 /** Punto de entrada único; el CookieManager conserva JSESSIONID durante toda la sesión. */
 public class PortalApp extends Application {
@@ -62,13 +63,33 @@ public class PortalApp extends Application {
     private void route(JsonNode session) {
         String role = session.path("rol").asText();
         if ("ADMINISTRADOR".equals(role)) new AdminView(http, SERVER, stage, session).show();
-        else {
-            Label destination = new Label("Sesión iniciada como " + role + "\nAbra el cliente " +
-                    ("CAJERO".equals(role) ? "cliente-caja" : "cliente-consultorio") + ".");
-            destination.setStyle("-fx-font-size:18px;-fx-text-alignment:center;");
-            Button logout = new Button("Cerrar sesión"); logout.setOnAction(e -> logout());
-            VBox box = new VBox(18, title("Portal"), destination, logout); box.setPadding(new Insets(40));
-            stage.setScene(new Scene(new StackPane(box), 560, 320));
+        String modulo = "CAJERO".equals(role) ? "cliente-caja" : "cliente-consultorio";
+        Button abrir = new Button("Abrir " + ("CAJERO".equals(role) ? "Caja" : "Consultorio"));
+        abrir.setOnAction(e -> lanzarCliente(modulo, session));
+        Button logout = new Button("Cerrar sesión"); logout.setOnAction(e -> logout());
+        Label destination = new Label("Sesión iniciada como " + role
+                + "\nEl área autorizada está lista para abrir.");
+        destination.setStyle("-fx-font-size:18px;-fx-text-alignment:center;");
+        VBox box = new VBox(18, title("Portal"), destination, abrir, logout);
+        box.setPadding(new Insets(40));
+        stage.setScene(new Scene(new StackPane(box), 560, 320));
+    }
+
+    private void lanzarCliente(String modulo, JsonNode session) {
+        try {
+            String cookie = CookieHandler.getDefault() instanceof CookieManager manager
+                    ? manager.getCookieStore().getCookies().stream()
+                            .filter(c -> "JSESSIONID".equalsIgnoreCase(c.getName()))
+                            .map(c -> c.getName() + "=" + c.getValue()).findFirst().orElse("")
+                    : "";
+            Path raiz = Path.of(System.getProperty("user.dir")).toAbsolutePath().getParent();
+            ProcessBuilder proceso = new ProcessBuilder("mvn.cmd", "javafx:run",
+                    "-Dservidor=" + SERVER, "-Dsesion=" + cookie);
+            proceso.directory(raiz.resolve(modulo).toFile());
+            proceso.inheritIO().start();
+            stage.hide();
+        } catch (Exception ex) {
+            error.setText("No se pudo abrir el módulo autorizado: " + ex.getMessage());
         }
     }
 

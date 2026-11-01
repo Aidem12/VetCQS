@@ -15,6 +15,7 @@
         <javafx.version>21.0.5</javafx.version>
         <!-- Se cambia con: mvn javafx:run -Dservidor=http://IP:8080 -->
         <servidor>http://localhost:8080</servidor>
+        <sesion></sesion>
     </properties>
 
     <dependencies>
@@ -45,6 +46,7 @@
                     <mainClass>mx.buap.veterinaria.consultorio.ConsultorioApp</mainClass>
                     <options>
                         <option>-Dservidor=${servidor}</option>
+                        <option>-Dsesion=${sesion}</option>
                     </options>
                 </configuration>
             </plugin>

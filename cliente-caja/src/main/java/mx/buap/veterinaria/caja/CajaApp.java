@@ -2,6 +2,7 @@ package mx.buap.veterinaria.caja;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.HttpCookie;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -76,6 +77,14 @@ public class CajaApp extends Application {
         CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
         java.net.CookieHandler.setDefault(cookies);
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).cookieHandler(cookies).build();
+        String sesion = System.getProperty("sesion", "");
+        if (!sesion.isBlank()) {
+            try {
+                cookies.getCookieStore().add(URI.create(SERVIDOR), HttpCookie.parse(sesion).get(0));
+            } catch (IllegalArgumentException ex) {
+                estadoServidor.setText("Sesión inválida");
+            }
+        }
         ventanaPrincipal = ventana;
         Label marca = new Label("SISTEMA VETERINARIA");
         marca.setStyle("-fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold;");
