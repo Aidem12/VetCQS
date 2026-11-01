@@ -1,0 +1,22 @@
+plan: iteracion-3-4-plan
+branch: pruebas/iteracion-2
+checkpoint: final
+tasks:
+  - id: 001-setup-baseline-regression
+    status: completed
+  - id: 002-transform-inventory-transactional-movements
+    status: completed
+  - id: 003-transform-blind-cash-register-cuts
+    status: partial
+  - id: 004-transform-personnel-login-and-roles
+    status: completed
+  - id: 005-transform-mock-cfdi-invoicing
+    status: completed
+  - id: 006-security-config-and-transport-hardening
+    status: completed
+  - id: 007-verify-regression-functional-and-compilation
+    status: completed_with_limitations
+tests:
+  server: "mvn -B test: PASS (1/1)"
+  clients: "mvn -B -DskipTests package: PASS (2/2)"
+  docker: "docker compose build servidor: PASS; health endpoint 200"

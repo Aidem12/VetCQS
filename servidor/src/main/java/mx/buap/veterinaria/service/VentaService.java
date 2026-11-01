@@ -24,6 +24,10 @@ import mx.buap.veterinaria.repository.ProductoRepository;
 import mx.buap.veterinaria.repository.PagoRepository;
 import mx.buap.veterinaria.repository.VentaRepository;
 import mx.buap.veterinaria.repository.ConsultaRepository;
+import mx.buap.veterinaria.repository.MovimientoInventarioRepository;
+import mx.buap.veterinaria.repository.UsuarioRepository;
+import mx.buap.veterinaria.model.MovimientoInventario;
+import mx.buap.veterinaria.model.Usuario;
 
 @Service
 public class VentaService {
@@ -32,13 +36,17 @@ public class VentaService {
     private final ProductoRepository productos;
     private final PagoRepository pagos;
     private final ConsultaRepository consultas;
+    private final MovimientoInventarioRepository movimientos;
+    private final UsuarioRepository usuarios;
 
     public VentaService(VentaRepository ventas, ProductoRepository productos, PagoRepository pagos,
-            ConsultaRepository consultas) {
+            ConsultaRepository consultas, MovimientoInventarioRepository movimientos, UsuarioRepository usuarios) {
         this.ventas = ventas;
         this.productos = productos;
         this.pagos = pagos;
         this.consultas = consultas;
+        this.movimientos = movimientos;
+        this.usuarios = usuarios;
     }
 
     @Transactional
@@ -120,10 +128,23 @@ public class VentaService {
                     "La suma de pagos debe ser igual al total");
         }
         for (VentaDetalle detalle : venta.getDetalles()) {
-            Producto producto = detalle.getProducto();
+            Producto producto = productos.findByIdForUpdate(detalle.getProducto().getId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
             if (producto.getTipo().equals("PRODUCTO")) {
+                if (producto.getStockActual().compareTo(detalle.getCantidad()) < 0) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Existencia insuficiente para: " + producto.getNombre());
+                }
                 producto.setStockActual(producto.getStockActual().subtract(detalle.getCantidad()));
                 productos.save(producto);
+                Usuario operador = usuarios.findAll().stream().filter(Usuario::isActivo).findFirst()
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "No hay operador activo"));
+                MovimientoInventario movimiento = new MovimientoInventario();
+                movimiento.setProducto(producto); movimiento.setUsuario(operador);
+                movimiento.setTipo(MovimientoInventario.Tipo.VENTA);
+                movimiento.setCantidad(detalle.getCantidad().negate());
+                movimiento.setMotivo("Deducción automática por venta " + venta.getId());
+                movimiento.setReferencia(venta.getFolio());
+                movimientos.save(movimiento);
             }
         }
         venta.setEstado(Venta.Estado.PAGADA);

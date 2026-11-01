@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Incremental implementation tasks for Iterations 3 and 4 of sistema-veterinaria.",
+  "tasks": [
+    {
+      "type": "setupBaseline",
+      "id": "001-setup-baseline-regression",
+      "description": "Freeze current sale, payment, clinical and connectivity behavior before Iterations 3 and 4.",
+      "reason": "Protect existing Iteration 1 and 2 behavior and the current cobro visual design.",
+      "requirements": "Capture reproducible baseline cases for servidor, cliente-caja and cliente-consultorio; include database seed assumptions, API responses, payment flow screenshots/checklist, and compilation commands. Work from a source snapshot and do not modify production branches.",
+      "snapshotFolder": ".",
+      "dependencies": [],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "002-transform-inventory-transactional-movements",
+      "description": "Add stock control with transactional deductions, replenishments and traceability.",
+      "reason": "Deliver the confirmed Iteration 3 inventory scope while preserving existing sales and catalog behavior.",
+      "requirements": "Add additive schema changes for stock state and an immutable movement ledger with operator, reason, quantity, balance, timestamp and source reference. Deduct stock atomically when a sale is completed; reject insufficient stock without partial sale/payment effects. Support authorized replenishment and auditable corrections. Add server endpoints/services and caja client flows without changing the existing cobro/payment visual design. Include validation, concurrency-safe transactions, focused unit/controller tests and migration checks.",
+      "skills": [
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["001-setup-baseline-regression"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "003-transform-blind-cash-register-cuts",
+      "description": "Implement blind cash-register opening and cuts with reconciliation by payment method.",
+      "reason": "Deliver the confirmed Iteration 3 cash-control scope with server-calculated expected values.",
+      "requirements": "Persist register opening, operator, opening cash, counted cash, expected cash, difference, close time and status. Calculate expected cash from persisted transactions and provide payment-method totals; the cashier submits counted values without seeing or editing expected cash before counting. Prevent duplicate/invalid closes, preserve historical operator references, expose role-authorized server APIs, and add caja workflows integrated into the existing cobro design. Add tests for exact, shortage, surplus, multiple payment methods and retry/concurrency cases.",
+      "skills": [
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["002-transform-inventory-transactional-movements"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "004-transform-personnel-login-and-roles",
+      "description": "Add basic employee login, role authorization and personnel administration.",
+      "reason": "Provide the minimum identity and administration foundation required by the Iteration 4 scope.",
+      "requirements": "Add employee/personnel persistence with unique username, adaptive password hash, role(s), audit timestamps and logical deactivation. Implement login/session behavior for both JavaFX clients, role-aware endpoint and screen access, safe validation/errors, logout/session expiration behavior, and administrative create/update/deactivate/list flows. Never expose password hashes or secrets; preserve historical operator IDs. Keep this limited to local application accounts, not SSO/MFA/public registration.",
+      "skills": [
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["003-transform-blind-cash-register-cuts"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "005-transform-mock-cfdi-invoicing",
+      "description": "Provide simulated electronic invoicing traceability without a fiscal provider.",
+      "reason": "Deliver Iteration 4 invoicing workflows safely without claiming fiscal certification.",
+      "requirements": "For an eligible completed sale, create a deterministic local mock invoice with clearly non-fiscal status, mock identifier, request/response metadata, operator, timestamps and idempotency protection. Provide server API and caja/client presentation for create, view and status/history. Do not call PAC/SAT/provider services, use certificates, store credentials, or label output as a real CFDI. Validate inputs and authorize access; add tests for success, duplicate request, invalid sale and failure status.",
+      "skills": [
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["004-transform-personnel-login-and-roles"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "security",
+      "id": "006-security-config-and-transport-hardening",
+      "description": "Harden application security and externalize secrets, URLs and HTTPS preparation.",
+      "reason": "Address assessment findings for local credentials, local resource/configuration access and restricted Spring configuration.",
+      "requirements": "Externalize datasource credentials, JDBC/server URLs, allowed origins and transport settings through environment/profile configuration; update example documentation without committing secrets. Apply password hashing, authorization, input validation, safe error/logging behavior, secure session/cookie defaults and HTTPS-ready configuration. Review direct dependencies for high-severity CVEs and remediate compatible versions without an unapproved Java/runtime upgrade. Verify configuration works in local Docker and test profiles; document that certificates/provider deployment remain out of scope.",
+      "skills": [
+        { "name": "cve-remediation", "location": "builtin" },
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["005-transform-mock-cfdi-invoicing"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "true",
+        "passUnitTests": "true"
+      }
+    },
+    {
+      "type": "transform",
+      "id": "007-verify-regression-functional-and-compilation",
+      "description": "Run post-change regression, functional and three-module compilation verification.",
+      "reason": "Provide approval evidence that the incremental changes did not regress existing workflows.",
+      "requirements": "Replay the baseline cases and add functional checks for inventory atomicity, replenishment/traceability, blind cuts, login/roles/deactivation, personnel administration and mock CFDI. Verify cobro/payment visual and interaction preservation. Apply schema migrations to clean and current-like databases. Compile/test/package servidor, cliente-caja and cliente-consultorio with Java 21; record commands, results, known limitations and any blocker. Do not weaken or delete existing tests to obtain a pass.",
+      "skills": [
+        { "name": "implementing-code", "location": "builtin" }
+      ],
+      "dependencies": ["006-security-config-and-transport-hardening"],
+      "successCriteria": {
+        "passBuild": "true",
+        "generateNewUnitTests": "false",
+        "passUnitTests": "true"
+      }
+    }
+  ],
+  "metadata": {
+    "planName": "iteracion-3-4-plan",
+    "projectName": "sistema-veterinaria",
+    "language": "java",
+    "createdAt": "2026-10-31T21:50:36-06:00",
+    "version": "1.0"
+  }
+}

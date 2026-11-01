@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "mascota")
@@ -21,6 +23,7 @@ public class Mascota {
     @Column(length = 60)
     private String raza;
     @Column(length = 1)
+    @JdbcTypeCode(SqlTypes.CHAR)
     private String sexo;
     @Column(name = "fecha_nacimiento")
     private LocalDate fechaNacimiento;
