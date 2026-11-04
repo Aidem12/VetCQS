@@ -54,22 +54,31 @@ final class AdminView {
         Button inventory = new Button("Registrar entrada");
         inventory.setOnAction(e -> inventoryForm());
 
-        HBox employeeActions = new HBox(8, addEmployee, deactivateEmployee);
-        HBox productActions = new HBox(8, addProduct, editProduct, deactivateProduct, inventory);
-        VBox left = new VBox(8, new Label("PERSONAL"), employees, employeeActions);
-        VBox right = new VBox(8, new Label("INVENTARIO / PRODUCTOS"), products, productActions);
-        HBox.setHgrow(left, Priority.ALWAYS);
-        HBox.setHgrow(right, Priority.ALWAYS);
-        VBox.setVgrow(employees, Priority.ALWAYS);
-        VBox.setVgrow(products, Priority.ALWAYS);
-        Label heading = new Label("Administración · " + session.path("nombre").asText());
-        heading.setStyle("-fx-font-size:18px;-fx-font-weight:bold;");
-        BorderPane root = new BorderPane(new HBox(12, left, right));
-        root.setTop(heading);
-        root.setBottom(status);
-        root.setPadding(new Insets(18));
+        addEmployee.getStyleClass().add("primary");
+        addProduct.getStyleClass().add("primary");
+        deactivateEmployee.getStyleClass().add("danger");
+        deactivateProduct.getStyleClass().add("danger");
+        FlowPane employeeActions = new FlowPane(8, 8, addEmployee, deactivateEmployee);
+        FlowPane productActions = new FlowPane(8, 8, addProduct, editProduct, inventory, deactivateProduct);
+        Label staffTitle = new Label("PERSONAL"); staffTitle.getStyleClass().add("section-title");
+        Label productTitle = new Label("INVENTARIO / PRODUCTOS"); productTitle.getStyleClass().add("section-title");
+        VBox left = new VBox(12, staffTitle, employeeActions, employees);
+        VBox right = new VBox(12, productTitle, productActions, products);
+        left.getStyleClass().add("card"); right.getStyleClass().add("card");
+        VBox.setVgrow(employees, Priority.ALWAYS); VBox.setVgrow(products, Priority.ALWAYS);
+        employees.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        products.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        Tab personal = new Tab("Personal", left); personal.setClosable(false);
+        Tab inventario = new Tab("Productos e inventario", right); inventario.setClosable(false);
+        TabPane sections = new TabPane(personal, inventario);
+        BorderPane root = new BorderPane(sections);
+        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), refresh));
+        BorderPane.setMargin(sections, new Insets(18));
+        status.getStyleClass().add("muted"); status.setWrapText(true);
+        root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));
         stage.setTitle("Sistema Veterinaria · Administración");
-        stage.setScene(new Scene(root, 1100, 650));
+        stage.setMinWidth(820); stage.setMinHeight(600);
+        stage.setScene(PortalApp.scene(root, 1100, 700));
         stage.show();
         load();
     }
@@ -120,11 +129,14 @@ final class AdminView {
     }
 
     private void employeeForm() {
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Nuevo personal");
-        dialog.setHeaderText("nombre,usuario,contraseña (8+),rol");
-        dialog.showAndWait().ifPresent(value -> {
-            String[] fields = value.split(",", -1);
+        TextField name = new TextField();
+        TextField user = new TextField();
+        PasswordField password = new PasswordField(); password.setPromptText("Mínimo 8 caracteres");
+        ComboBox<String> role = new ComboBox<>(FXCollections.observableArrayList("CAJERO", "VETERINARIO", "ADMINISTRADOR"));
+        role.setValue("CAJERO");
+        Dialog<String[]> dialog = form("Nuevo personal", "Datos del personal",
+                new String[]{"Nombre", "Usuario", "Contraseña", "Rol"}, name, user, password, role);
+        dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 4 || fields[0].isBlank() || fields[1].isBlank() || fields[2].length() < 8
                     || !isRole(fields[3])) {
                 status.setText("Datos inválidos. Rol: ADMINISTRADOR, CAJERO o VETERINARIO.");
@@ -147,15 +159,16 @@ final class AdminView {
     }
 
     private void productForm(JsonNode selected) {
-        String initial = selected == null ? "" : String.join(",",
-                selected.path("nombre").asText(), selected.path("tipo").asText(),
-                selected.path("precio").asText(), selected.path("stockActual").asText(),
-                selected.path("stockMinimo").asText());
-        TextInputDialog dialog = new TextInputDialog(initial);
-        dialog.setTitle(selected == null ? "Nuevo producto" : "Editar producto");
-        dialog.setHeaderText("nombre,tipo(PRODUCTO|SERVICIO),precio,stock,stockMinimo");
-        dialog.showAndWait().ifPresent(value -> {
-            String[] fields = value.split(",", -1);
+        TextField name = new TextField(selected == null ? "" : selected.path("nombre").asText());
+        ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList("PRODUCTO", "SERVICIO"));
+        type.setValue(selected == null ? "PRODUCTO" : selected.path("tipo").asText());
+        TextField price = new TextField(selected == null ? "" : selected.path("precio").asText());
+        TextField stock = new TextField(selected == null ? "0" : selected.path("stockActual").asText());
+        TextField minimum = new TextField(selected == null ? "0" : selected.path("stockMinimo").asText());
+        price.setPromptText("0.00");
+        Dialog<String[]> dialog = form(selected == null ? "Nuevo producto" : "Editar producto", "Datos del producto o servicio",
+                new String[]{"Nombre", "Tipo", "Precio ($)", "Existencias", "Stock mínimo"}, name, type, price, stock, minimum);
+        dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 5 || fields[0].isBlank() || !fields[1].equalsIgnoreCase("PRODUCTO")
                     && !fields[1].equalsIgnoreCase("SERVICIO")) {
                 status.setText("Datos de producto inválidos.");
@@ -190,11 +203,11 @@ final class AdminView {
             status.setText("Seleccione un producto.");
             return;
         }
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Entrada de inventario");
-        dialog.setHeaderText("cantidad positiva,motivo");
-        dialog.showAndWait().ifPresent(value -> {
-            String[] fields = value.split(",", 2);
+        TextField quantity = new TextField(); quantity.setPromptText("Cantidad positiva");
+        TextField reason = new TextField(); reason.setPromptText("Motivo de la entrada");
+        Dialog<String[]> dialog = form("Entrada de inventario", selected.path("nombre").asText(),
+                new String[]{"Cantidad", "Motivo"}, quantity, reason);
+        dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 2 || fields[1].isBlank()) {
                 status.setText("Capture cantidad y motivo.");
                 return;
@@ -210,6 +223,36 @@ final class AdminView {
                 status.setText("La cantidad debe ser numérica.");
             }
         });
+    }
+
+    private Dialog<String[]> form(String title, String heading, String[] labels, Control... fields) {
+        Dialog<String[]> dialog = new Dialog<>();
+        dialog.initOwner(stage); dialog.setTitle(title); dialog.setHeaderText(heading);
+        PortalApp.styleDialog(dialog);
+        GridPane grid = new GridPane(); grid.setHgap(16); grid.setVgap(12);
+        grid.setPadding(new Insets(20));
+        ColumnConstraints label = new ColumnConstraints(120);
+        ColumnConstraints input = new ColumnConstraints(); input.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(label, input);
+        for (int i = 0; i < fields.length; i++) {
+            Label caption = new Label(labels[i]); caption.setLabelFor(fields[i]);
+            fields[i].setMaxWidth(Double.MAX_VALUE);
+            grid.addRow(i, caption, fields[i]);
+        }
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().setPrefWidth(560);
+        ButtonType save = new ButtonType("Guardar", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
+        dialog.setResultConverter(button -> {
+            if (button != save) return null;
+            String[] values = new String[fields.length];
+            for (int i = 0; i < fields.length; i++) {
+                values[i] = fields[i] instanceof TextInputControl text ? text.getText()
+                        : String.valueOf(((ComboBox<?>) fields[i]).getValue());
+            }
+            return values;
+        });
+        return dialog;
     }
 
     private void submit(String method, String path, ObjectNode body, String success) {
@@ -230,8 +273,10 @@ final class AdminView {
                 || role.equalsIgnoreCase("VETERINARIO");
     }
 
-    private static boolean confirm(String message) {
+    private boolean confirm(String message) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.OK, ButtonType.CANCEL);
+        alert.initOwner(stage);
+        PortalApp.styleDialog(alert);
         return alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
     }
 

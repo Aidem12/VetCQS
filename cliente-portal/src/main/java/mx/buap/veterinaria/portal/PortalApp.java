@@ -40,13 +40,42 @@ public class PortalApp extends Application {
         Button entrar = new Button("Iniciar sesión"); entrar.setDefaultButton(true);
         error.setStyle("-fx-text-fill:#B3261E;");
         entrar.setOnAction(e -> login(usuario.getText(), contrasena.getText(), entrar));
-        VBox box = new VBox(12, title("VetCQS · Portal"), usuario, contrasena, entrar, error);
-        box.setPadding(new Insets(36)); box.setMaxWidth(360);
-        StackPane root = new StackPane(box); root.setStyle("-fx-background-color:#F3F6F9;");
-        stage.setTitle("Sistema Veterinaria · Portal"); stage.setScene(new Scene(root, 520, 360)); stage.show();
+        entrar.getStyleClass().add("primary");
+        entrar.setMaxWidth(Double.MAX_VALUE);
+        error.setWrapText(true);
+        Label hint = new Label("Ingrese sus datos para acceder a su área de trabajo.");
+        hint.setWrapText(true); hint.getStyleClass().add("muted");
+        VBox box = new VBox(12, title("Bienvenido a VetCQS"), hint,
+                new Label("Usuario"), usuario, new Label("Contraseña"), contrasena, entrar, error);
+        box.getStyleClass().add("card"); box.setMaxWidth(390); box.setMaxHeight(Region.USE_PREF_SIZE);
+        StackPane content = new StackPane(box); content.setPadding(new Insets(28));
+        BorderPane root = new BorderPane(content, header("Acceso al sistema", null), null, null, null);
+        stage.setTitle("Sistema Veterinaria · Portal");
+        stage.setMinWidth(500); stage.setMinHeight(540);
+        stage.setScene(scene(root, 580, 580)); stage.show();
     }
 
-    private Label title(String text) { Label l = new Label(text); l.setStyle("-fx-font-size:22px;-fx-font-weight:bold;-fx-text-fill:#17324D;"); return l; }
+    private Label title(String text) { Label l = new Label(text); l.getStyleClass().add("page-title"); return l; }
+
+    static Scene scene(javafx.scene.Parent root, double width, double height) {
+        Scene scene = new Scene(root, width, height);
+        scene.getStylesheets().add(PortalApp.class.getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
+        return scene;
+    }
+
+    static void styleDialog(Dialog<?> dialog) {
+        dialog.getDialogPane().getStylesheets().add(PortalApp.class.getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
+    }
+
+    static HBox header(String subtitle, javafx.scene.Node action) {
+        Label brand = new Label("SISTEMA VETERINARIA"); brand.getStyleClass().add("brand");
+        Label detail = new Label(subtitle); detail.getStyleClass().add("subtitle");
+        Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox header = new HBox(20, new VBox(2, brand, detail), spacer);
+        header.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        if (action != null) header.getChildren().add(action);
+        header.getStyleClass().add("header"); return header;
+    }
 
     private void login(String user, String password, Button button) {
         if (user.isBlank() || password.isBlank()) { error.setText("Capture usuario y contraseña."); return; }
@@ -63,17 +92,21 @@ public class PortalApp extends Application {
 
     private void route(JsonNode session) {
         String role = session.path("rol").asText();
-        if ("ADMINISTRADOR".equals(role)) new AdminView(http, SERVER, stage, session).show();
+        if ("ADMINISTRADOR".equals(role)) { new AdminView(http, SERVER, stage, session).show(); return; }
         String modulo = "CAJERO".equals(role) ? "cliente-caja" : "cliente-consultorio";
         Button abrir = new Button("Abrir " + ("CAJERO".equals(role) ? "Caja" : "Consultorio"));
         abrir.setOnAction(e -> lanzarCliente(modulo, session));
         Button logout = new Button("Cerrar sesión"); logout.setOnAction(e -> logout());
         Label destination = new Label("Sesión iniciada como " + role
                 + "\nEl área autorizada está lista para abrir.");
-        destination.setStyle("-fx-font-size:18px;-fx-text-alignment:center;");
+        destination.setWrapText(true);
+        destination.getStyleClass().add("muted");
+        abrir.getStyleClass().add("primary");
+        abrir.setMaxWidth(Double.MAX_VALUE);
         VBox box = new VBox(18, title("Portal"), destination, abrir, logout);
-        box.setPadding(new Insets(40));
-        stage.setScene(new Scene(new StackPane(box), 560, 320));
+        box.getStyleClass().add("card"); box.setMaxWidth(420); box.setMaxHeight(Region.USE_PREF_SIZE);
+        StackPane content = new StackPane(box); content.setPadding(new Insets(28));
+        stage.setScene(scene(new BorderPane(content, header("Área de trabajo", null), null, null, null), 580, 540));
     }
 
     private void lanzarCliente(String modulo, JsonNode session) {

@@ -162,6 +162,10 @@ public class CajaApp extends Application {
         BorderPane raiz = new BorderPane(centro, barraSuperior, panelTotal, atajos, null);
         raiz.setStyle("-fx-background-color: #F3F6F9;");
         Scene escena = new Scene(raiz, 1024, 640);
+        escena.getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
+        ventana.setMinWidth(850);
+        ventana.setMinHeight(560);
+        BorderPane.setMargin(panelTotal, new Insets(18, 18, 12, 6));
         escena.setOnKeyPressed(e -> {
             if (e.getCode() == javafx.scene.input.KeyCode.DELETE) {
                 eliminarSeleccionado();
@@ -647,6 +651,7 @@ public class CajaApp extends Application {
     }
 
     private void prepararDialogo(Alert dialogo) {
+        dialogo.getDialogPane().getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
         dialogo.initOwner(ventanaPrincipal);
         dialogo.setOnShown(evento -> {
             Window ventanaDialogo = dialogo.getDialogPane().getScene().getWindow();

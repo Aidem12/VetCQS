@@ -1,0 +1,59 @@
+/* Tema común derivado de Sistema Veterinaria · Caja. */
+.root {
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 13px;
+    -fx-background-color: #F3F6F9;
+    -fx-base: #F3F6F9;
+    -fx-accent: #21865B;
+    -fx-focus-color: #315B79;
+    -fx-faint-focus-color: transparent;
+    -fx-text-background-color: #17324D;
+}
+.label { -fx-text-fill: #17324D; }
+.header { -fx-background-color: #17324D; -fx-padding: 14px 20px; -fx-spacing: 20px; }
+.brand { -fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold; }
+.subtitle { -fx-text-fill: #D7E5F5; -fx-font-size: 13px; }
+.badge { -fx-background-color: #315B79; -fx-background-radius: 14px; -fx-padding: 7px 12px; -fx-text-fill: white; }
+.card { -fx-background-color: white; -fx-border-color: #D7E0E8; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 20px; -fx-spacing: 12px; }
+.section-title { -fx-text-fill: #6B7C8F; -fx-font-size: 11px; -fx-font-weight: bold; }
+.page-title { -fx-font-size: 22px; -fx-font-weight: bold; }
+.muted { -fx-text-fill: #718294; -fx-font-size: 12px; }
+.error { -fx-text-fill: #B3261E; }
+.button { -fx-background-color: #E8F0F7; -fx-text-fill: #17324D; -fx-font-weight: bold; -fx-padding: 10px 16px; -fx-background-radius: 6px; -fx-border-radius: 6px; -fx-border-color: transparent; -fx-cursor: hand; }
+.button:hover { -fx-background-color: #D7E5F5; }
+.button:pressed { -fx-background-color: #B8C7D6; }
+.button:focused { -fx-border-color: #315B79; }
+.button.primary, .button:default { -fx-background-color: #21865B; -fx-text-fill: white; }
+.button.primary:hover, .button:default:hover { -fx-background-color: #196D49; }
+.button.primary:pressed, .button:default:pressed { -fx-background-color: #125336; }
+.button.danger { -fx-background-color: #FCEDEA; -fx-text-fill: #A12B24; }
+.button.danger:hover { -fx-background-color: #F6D5CF; }
+.button:disabled { -fx-opacity: 0.5; -fx-cursor: default; }
+.text-field, .text-area, .combo-box { -fx-background-color: white; -fx-border-color: #B8C7D6; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 9px 12px; -fx-prompt-text-fill: #718294; -fx-text-fill: #17324D; }
+.text-field:focused, .text-area:focused, .combo-box:focused { -fx-border-color: #315B79; -fx-effect: dropshadow(gaussian, #D7E5F5, 4, 0.3, 0, 0); }
+.text-area .content { -fx-background-color: white; }
+.combo-box > .list-cell { -fx-background-color: transparent; -fx-padding: 0; }
+.combo-box { -fx-padding: 9px 12px; }
+.header.vertical-header { -fx-spacing: 2px; }
+.table-view, .list-view { -fx-background-color: white; -fx-border-color: #D7E0E8; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 1px; }
+.table-view .column-header-background, .table-view .column-header, .table-view .filler { -fx-background-color: #E8F0F7; }
+.table-view .column-header { -fx-size: 40px; -fx-border-color: transparent transparent #D7E0E8 transparent; }
+.table-view .column-header .label { -fx-text-fill: #17324D; -fx-font-weight: bold; -fx-alignment: CENTER_LEFT; -fx-padding: 0 10px; }
+.table-cell { -fx-padding: 10px; -fx-border-color: transparent; }
+.table-row-cell, .list-cell { -fx-background-color: white; -fx-text-fill: #17324D; }
+.table-row-cell:odd, .list-cell:odd { -fx-background-color: #F7F9FB; }
+.list-cell { -fx-padding: 10px 12px; }
+.table-row-cell:filled:hover, .list-cell:filled:hover { -fx-background-color: #EDF3F8; }
+.table-row-cell:filled:selected, .list-cell:filled:selected { -fx-background-color: #D7E5F5; -fx-text-background-color: #17324D; -fx-text-fill: #17324D; }
+.table-row-cell:filled:selected .table-cell { -fx-text-fill: #17324D; }
+.table-view .placeholder .label { -fx-text-fill: #718294; }
+.scroll-pane, .scroll-pane > .viewport { -fx-background-color: transparent; }
+.dialog-pane { -fx-background-color: #F3F6F9; }
+.dialog-pane > .header-panel { -fx-background-color: #17324D; -fx-padding: 16px 20px; }
+.dialog-pane > .header-panel .label { -fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold; }
+.dialog-pane > .content { -fx-padding: 20px; }
+.dialog-pane > .button-bar { -fx-padding: 12px 20px 18px 20px; }
+.tab-pane > .tab-header-area > .tab-header-background { -fx-background-color: #F3F6F9; }
+.tab-pane .tab { -fx-background-color: #E8F0F7; -fx-padding: 10px 18px; }
+.tab-pane .tab:selected { -fx-background-color: white; }
+.tab-pane .tab:selected .tab-label { -fx-text-fill: #21865B; -fx-font-weight: bold; }
