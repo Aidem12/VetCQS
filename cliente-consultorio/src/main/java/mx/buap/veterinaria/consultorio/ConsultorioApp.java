@@ -1,18 +1,20 @@
 package mx.buap.veterinaria.consultorio;
 
-import java.net.URI;
+import java.math.BigDecimal;
+import java.net.*;
 import java.net.http.*;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-
+import java.time.*;
+import java.time.format.DateTimeFormatter;
+import java.util.function.Consumer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
@@ -20,255 +22,369 @@ import javafx.stage.Stage;
 
 public class ConsultorioApp extends Application {
     static final String SERVIDOR = System.getProperty("servidor", "http://localhost:8080");
+    private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
     private final HttpClient http;
     private final ObjectMapper json = new ObjectMapper();
     private final Label estado = new Label("Servidor: verificando...");
+    private final Label aviso = new Label();
+    private final Label paciente = new Label("Seleccione un dueño y su mascota.");
+    private final Label datosDueno = new Label();
+    private final Label datosMascota = new Label();
     private final ListView<JsonNode> duenos = new ListView<>();
     private final ListView<JsonNode> mascotas = new ListView<>();
     private final ListView<JsonNode> historial = new ListView<>();
+    private final ListView<String> detalles = new ListView<>();
     private final TextField buscar = new TextField();
     private final TextField motivo = new TextField();
     private final TextField peso = new TextField();
     private final TextField temperatura = new TextField();
     private final TextArea diagnostico = new TextArea();
     private final TextArea tratamiento = new TextArea();
+    private final java.util.Map<Integer, JsonNode> catalogoPrecuenta = new java.util.HashMap<>();
     private final TextField productoId = new TextField();
     private final TextField cantidad = new TextField("1");
+    private final Button guardar = new Button("Guardar consulta");
+    private final Button nuevaMascota = new Button("Registrar mascota");
     private Stage ventanaPrincipal;
     private JsonNode duenoSeleccionado;
     private JsonNode mascotaSeleccionada;
     private JsonNode consultaSeleccionada;
+    private int busquedaVersion;
+    private int mascotasVersion;
+    private int historialVersion;
+    private boolean cerrandoSesion;
 
     public ConsultorioApp() {
-        java.net.CookieManager cookies = new java.net.CookieManager(
-                null, java.net.CookiePolicy.ACCEPT_ORIGINAL_SERVER);
         String sesion = System.getProperty("sesion", "");
         if (!sesion.isBlank()) {
             try {
-                cookies.getCookieStore().add(URI.create(SERVIDOR),
-                        java.net.HttpCookie.parse(sesion).get(0));
-            } catch (IllegalArgumentException ignored) {
-                // El servidor rechazará la sesión inválida con 401/403.
+                HttpCookie cookie = HttpCookie.parse(sesion).get(0);
+                cookie.setPath("/"); cookie.setVersion(0);
+                cookies.getCookieStore().add(URI.create(SERVIDOR), cookie);
             }
+            catch (IllegalArgumentException ignored) { }
         }
-        http = HttpClient.newBuilder().cookieHandler(cookies).build();
+        http = HttpClient.newBuilder().cookieHandler(cookies).connectTimeout(Duration.ofSeconds(4)).build();
     }
 
-    @Override
-    public void start(Stage ventana) {
+    @Override public void start(Stage ventana) {
         ventanaPrincipal = ventana;
         Label marca = new Label("SISTEMA VETERINARIA"); marca.getStyleClass().add("brand");
         Label subtitulo = new Label("Atención médica  /  Consultorio"); subtitulo.getStyleClass().add("subtitle");
         estado.getStyleClass().add("badge");
-        HBox barra = new HBox(18, new VBox(2, marca, subtitulo), espacio(), estado);
+        Button inventario = new Button("Revisar inventario"); inventario.setOnAction(e -> revisarInventario());
+        Button salir = new Button("Cerrar sesión"); salir.setOnAction(e -> cerrarSesion());
+        Region espacio = new Region(); HBox.setHgrow(espacio, Priority.ALWAYS);
+        HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, salir);
         barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT); barra.getStyleClass().add("header");
 
-        buscar.setPromptText("Buscar dueño por nombre o teléfono");
-        Button buscarBtn = new Button("Buscar");
-        buscarBtn.setMinWidth(Region.USE_PREF_SIZE);
-        buscar.setMinWidth(0);
-        buscarBtn.setOnAction(e -> buscarDuenos());
-        buscar.setOnAction(e -> buscarDuenos());
-        VBox panelDuenos = panel("DUEÑOS", new HBox(8, buscar, buscarBtn), duenos);
-        VBox panelMascotas = panel("MASCOTAS", mascotas);
-        VBox panelHistorial = panel("HISTORIAL CLÍNICO", historial);
-        duenos.setCellFactory(v -> textoCelda(n -> n.path("nombre").asText()
-                + " · " + n.path("telefono").asText("sin teléfono")));
-        mascotas.setCellFactory(v -> textoCelda(n -> n.path("nombre").asText()
-                + " · " + n.path("especie").asText()));
-        historial.setCellFactory(v -> textoCelda(n -> n.path("fecha").asText()
-                + " · " + n.path("motivo").asText()));
-        duenos.setOnMouseClicked(e -> seleccionarDueno());
-        mascotas.setOnMouseClicked(e -> seleccionarMascota());
-        historial.setOnMouseClicked(e -> {
-            consultaSeleccionada = historial.getSelectionModel().getSelectedItem();
-        });
+        buscar.setId("buscar-dueno"); buscar.setPromptText("Nombre o teléfono"); buscar.setMinWidth(0);
+        Button buscarBtn = new Button("Buscar"); buscarBtn.setMinWidth(Region.USE_PREF_SIZE);
+        buscarBtn.setOnAction(e -> buscarDuenos()); buscar.setOnAction(e -> buscarDuenos());
+        HBox.setHgrow(buscar, Priority.ALWAYS);
+        Button nuevoDueno = new Button("Registrar dueño"); nuevoDueno.setOnAction(e -> registrarDueno());
+        nuevaMascota.setOnAction(e -> registrarMascota()); nuevaMascota.setDisable(true);
+        duenos.setId("duenos"); mascotas.setId("mascotas"); historial.setId("historial");
+        duenos.setPlaceholder(new Label("Registre un dueño o busque por nombre."));
+        mascotas.setPlaceholder(new Label("Seleccione un dueño para ver sus mascotas."));
+        historial.setPlaceholder(new Label("Seleccione un paciente para ver su historial."));
+        duenos.setCellFactory(v -> textoCelda(n -> texto(n,"nombre") + " · " + texto(n,"telefono")));
+        mascotas.setCellFactory(v -> textoCelda(n -> texto(n,"nombre") + " · " + texto(n,"especie")));
+        historial.setCellFactory(v -> textoCelda(n -> fecha(texto(n,"fecha")) + " · " + texto(n,"motivo")));
+        duenos.getSelectionModel().selectedItemProperty().addListener((o,a,b) -> seleccionarDueno(b));
+        mascotas.getSelectionModel().selectedItemProperty().addListener((o,a,b) -> seleccionarMascota(b));
+        historial.getSelectionModel().selectedItemProperty().addListener((o,a,b) -> consultaSeleccionada = b);
+        historial.setOnMouseClicked(e -> { if (e.getClickCount() == 2) verConsulta(); });
+        Button ver = new Button("Ver consulta"); ver.setOnAction(e -> verConsulta());
+        ver.disableProperty().bind(historial.getSelectionModel().selectedItemProperty().isNull());
+        for (Label label : new Label[]{datosDueno, datosMascota, paciente, aviso}) { label.setWrapText(true); label.setMinHeight(Region.USE_PREF_SIZE); label.setMaxWidth(Double.MAX_VALUE); label.getStyleClass().add("muted"); }
+        VBox panelDuenos = panel("DUEÑOS", new HBox(8, buscar, buscarBtn), nuevoDueno, duenos, datosDueno);
+        VBox panelMascotas = panel("MASCOTAS", nuevaMascota, mascotas, datosMascota);
+        VBox panelHistorial = panel("HISTORIAL CLÍNICO", historial, ver);
 
-        GridPane formulario = new GridPane();
-        formulario.setHgap(10);
-        formulario.setVgap(8);
-        formulario.setPadding(new Insets(16));
-        formulario.addRow(0, new Label("Motivo"), motivo);
-        formulario.addRow(1, new Label("Peso (kg)"), peso);
-        formulario.addRow(2, new Label("Temperatura (°C)"), temperatura);
-        formulario.addRow(3, new Label("Diagnóstico"), diagnostico);
-        formulario.addRow(4, new Label("Tratamiento"), tratamiento);
-        diagnostico.setPrefRowCount(3);
-        tratamiento.setPrefRowCount(3);
-        ColumnConstraints etiqueta = new ColumnConstraints(110);
-        ColumnConstraints campo = new ColumnConstraints();
-        campo.setHgrow(Priority.ALWAYS);
-        formulario.getColumnConstraints().addAll(etiqueta, campo);
-        Button guardarConsulta = new Button("Guardar consulta");
-        guardarConsulta.setOnAction(e -> guardarConsulta());
-        formulario.add(guardarConsulta, 1, 5);
-        guardarConsulta.getStyleClass().add("primary");
-        guardarConsulta.setMaxWidth(Double.MAX_VALUE);
+        motivo.setId("motivo"); peso.setId("peso"); temperatura.setId("temperatura");
+        diagnostico.setId("diagnostico"); tratamiento.setId("tratamiento");
+        diagnostico.setWrapText(true); tratamiento.setWrapText(true);
+        diagnostico.setPrefRowCount(5); tratamiento.setPrefRowCount(5);
+        motivo.setPromptText("Motivo de la visita (obligatorio)"); peso.setPromptText("Ej. 4.50"); temperatura.setPromptText("Ej. 38.5");
+        GridPane formulario = grid(new String[]{"Motivo", "Peso (kg)", "Temperatura (°C)", "Diagnóstico", "Tratamiento"}, motivo, peso, temperatura, diagnostico, tratamiento);
+        guardar.getStyleClass().add("primary"); guardar.setMaxWidth(Double.MAX_VALUE); guardar.setDisable(true);
+        guardar.setOnAction(e -> guardarConsulta());
+        Button nueva = new Button("Nueva consulta"); nueva.setOnAction(e -> limpiarConsulta());
+        VBox consulta = panel("NUEVA CONSULTA MÉDICA", paciente, formulario, guardar, nueva);
 
-        GridPane precuenta = new GridPane();
-        precuenta.setHgap(8);
-        precuenta.setVgap(8);
-        precuenta.setPadding(new Insets(16));
-        productoId.setPromptText("ID producto o servicio");
-        Button agregar = new Button("Agregar");
-        ListView<String> detalles = new ListView<>();
-        Button enviar = new Button("Enviar precuenta a caja");
-        agregar.setOnAction(e -> {
-            if (!productoId.getText().isBlank()) {
-                detalles.getItems().add(productoId.getText().trim() + " x " + cantidad.getText().trim());
-                productoId.clear();
-            }
-        });
-        enviar.setOnAction(e -> enviarPrecuenta(detalles));
-        productoId.setMaxWidth(Double.MAX_VALUE); cantidad.setPrefColumnCount(4);
-        precuenta.add(new Label("Producto o servicio"), 0, 0, 2, 1);
-        precuenta.add(productoId, 0, 1, 2, 1);
-        precuenta.addRow(2, new Label("Cantidad"), cantidad);
-        precuenta.add(agregar, 0, 3, 2, 1);
-        precuenta.add(detalles, 0, 4, 2, 1);
-        precuenta.add(enviar, 0, 5, 2, 1);
-        detalles.setPrefHeight(140);
-        detalles.setMinHeight(100);
-        historial.setMinHeight(100);
-        GridPane.setHgrow(productoId, Priority.ALWAYS); GridPane.setHgrow(cantidad, Priority.ALWAYS);
-        ColumnConstraints first = new ColumnConstraints(); first.setPercentWidth(50);
-        ColumnConstraints second = new ColumnConstraints(); second.setPercentWidth(50);
-        precuenta.getColumnConstraints().addAll(first, second);
-        enviar.getStyleClass().add("primary"); enviar.setMaxWidth(Double.MAX_VALUE);
-        formulario.setPadding(Insets.EMPTY); precuenta.setPadding(Insets.EMPTY);
-        VBox consulta = panel("CONSULTA MÉDICA", formulario);
-        VBox cuenta = panel("PRECUENTA", precuenta);
+        productoId.setPromptText("ID de producto o servicio"); cantidad.setPrefColumnCount(4);
+        Button agregar = new Button("Agregar"); agregar.setOnAction(e -> agregarDetalle());
+        Button quitar = new Button("Quitar"); quitar.setOnAction(e -> detalles.getItems().remove(detalles.getSelectionModel().getSelectedItem()));
+        Button enviar = new Button("Enviar precuenta a caja"); enviar.getStyleClass().add("primary");
+        enviar.setMaxWidth(Double.MAX_VALUE); enviar.setOnAction(e -> enviarPrecuenta(enviar));
+        detalles.setPrefHeight(100); detalles.setMinHeight(80); historial.setMinHeight(100);
+        Button elegirInsumo=new Button("Buscar servicio o insumo"); elegirInsumo.setOnAction(e -> revisarInventario());
+        detalles.setCellFactory(v -> new ListCell<>() { @Override protected void updateItem(String item,boolean empty){super.updateItem(item,empty);if(empty||item==null){setText(null);return;}String[] partes=item.split(" x ");JsonNode p=catalogoPrecuenta.get(Integer.parseInt(partes[0]));setText(p==null?item:partes[1]+" × "+p.path("nombre").asText()+" · $"+p.path("precio").decimalValue().multiply(new BigDecimal(partes[1])));}});
+        VBox cuenta = panel("SERVICIOS E INSUMOS A COBRAR", elegirInsumo, grid(new String[]{"Producto / ID", "Cantidad"}, productoId, cantidad),
+                new HBox(8, agregar, quitar), detalles, enviar);
         cuenta.setMinHeight(Region.USE_PREF_SIZE);
         VBox izquierda = new VBox(14, panelDuenos, panelMascotas); izquierda.setPrefWidth(300);
-        VBox derecha = new VBox(14, panelHistorial, cuenta); derecha.setPrefWidth(340);
-        consulta.setPrefWidth(420);
+        VBox derecha = new VBox(14, panelHistorial, cuenta); derecha.setPrefWidth(340); consulta.setPrefWidth(430);
         HBox cuerpo = new HBox(14, izquierda, consulta, derecha); cuerpo.setPadding(new Insets(18));
-        HBox.setHgrow(izquierda, Priority.ALWAYS); HBox.setHgrow(consulta, Priority.ALWAYS); HBox.setHgrow(derecha, Priority.ALWAYS);
-        HBox.setHgrow(buscar, Priority.ALWAYS); buscar.setPrefColumnCount(12);
-        VBox.setVgrow(panelHistorial, Priority.ALWAYS);
+        for (Node n : new Node[]{izquierda, consulta, derecha}) HBox.setHgrow(n, Priority.ALWAYS);
         ScrollPane scroll = new ScrollPane(cuerpo); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
-        BorderPane raiz = new BorderPane(scroll, barra, null, null, null);
-        ventana.setTitle("Sistema Veterinaria · Consultorio");
-        Scene escena = new Scene(raiz, 1280, 820);
-        escena.getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
-        ventana.setMinWidth(1050); ventana.setMinHeight(700);
-        ventana.setScene(escena);
-        ventana.show();
-        verificarServidor();
-    }
-
-    private VBox panel(String titulo, javafx.scene.Node... nodos) {
-        Label encabezado = new Label(titulo);
-        encabezado.getStyleClass().add("section-title");
-        VBox panel = new VBox(12);
-        panel.getStyleClass().add("card");
-        panel.getChildren().add(encabezado); panel.getChildren().addAll(nodos);
-        for (javafx.scene.Node nodo : nodos) {
-            if (nodo instanceof ListView<?>) { VBox.setVgrow(nodo, Priority.ALWAYS); }
-        }
-        VBox.setVgrow(panel, Priority.ALWAYS);
-        return panel;
-    }
-
-    private ListCell<JsonNode> textoCelda(java.util.function.Function<JsonNode, String> texto) {
-        return new ListCell<>() {
-            @Override protected void updateItem(JsonNode item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : texto.apply(item));
-            }
-        };
+        BorderPane raiz = new BorderPane(scroll, barra, null, aviso, null);
+        BorderPane.setMargin(aviso, new Insets(0, 20, 12, 20));
+        Scene escena = new Scene(raiz, 1360, 880); escena.getStylesheets().add(tema());
+        ventana.setMinWidth(1120); ventana.setMinHeight(720);
+        ventana.setTitle("Sistema Veterinaria · Consultorio"); ventana.setScene(escena); ventana.show();
+        api("GET", "/api/salud", null, n -> estado.setText("Servidor: conectado"), e -> estado.setText("Servidor: sin conexión"));
+        buscarDuenos();
     }
 
     private void buscarDuenos() {
-        request("GET", "/api/clinica/duenos?q=" + encode(buscar.getText()), null)
-                .thenAccept(r -> Platform.runLater(() -> {
-                    if (r.statusCode() == 200) {
-                        duenos.setItems(FXCollections.observableArrayList(parseArray(r.body())));
-                    } else mostrarError("No se pudieron consultar los dueños.");
-                }));
+        int version = ++busquedaVersion;
+        api("GET", "/api/clinica/duenos?q=" + encode(buscar.getText().trim()), null, n -> {
+            if (version != busquedaVersion) return;
+            duenos.getItems().clear(); n.forEach(duenos.getItems()::add);
+            avisar(duenos.getItems().isEmpty() ? "No hay coincidencias. Puede registrar un nuevo dueño." : "Seleccione un dueño para ver sus mascotas.", false);
+        }, this::error);
     }
 
-    private void seleccionarDueno() {
-        duenoSeleccionado = duenos.getSelectionModel().getSelectedItem();
-        if (duenoSeleccionado == null) return;
-        request("GET", "/api/clinica/duenos/" + duenoSeleccionado.path("id").asInt() + "/mascotas", null)
-                .thenAccept(r -> Platform.runLater(() ->
-                        mascotas.setItems(FXCollections.observableArrayList(parseArray(r.body())))));
+    private void seleccionarDueno(JsonNode dueno) {
+        duenoSeleccionado = dueno; int version = ++mascotasVersion;
+        mascotas.getItems().clear(); seleccionarMascota(null);
+        nuevaMascota.setDisable(dueno == null); datosDueno.setText(dueno == null ? "" :
+                "Teléfono: " + texto(dueno,"telefono") + "\nCorreo: " + texto(dueno,"correo") + "\nDirección: " + texto(dueno,"direccion"));
+        if (dueno == null) return;
+        api("GET", "/api/clinica/duenos/" + id(dueno) + "/mascotas", null, n -> {
+            if (version != mascotasVersion) return;
+            n.forEach(mascotas.getItems()::add);
+            mascotas.setPlaceholder(new Label("Este dueño aún no tiene mascotas registradas."));
+        }, this::error);
     }
 
-    private void seleccionarMascota() {
-        mascotaSeleccionada = mascotas.getSelectionModel().getSelectedItem();
-        if (mascotaSeleccionada == null) return;
-        request("GET", "/api/clinica/mascotas/" + mascotaSeleccionada.path("id").asInt() + "/consultas", null)
-                .thenAccept(r -> Platform.runLater(() ->
-                        historial.setItems(FXCollections.observableArrayList(parseArray(r.body())))));
+    private void seleccionarMascota(JsonNode mascota) {
+        mascotaSeleccionada = mascota; historialVersion++;
+        historial.getItems().clear(); consultaSeleccionada = null; detalles.getItems().clear(); limpiarConsulta();
+        guardar.setDisable(mascota == null);
+        datosMascota.setText(mascota == null ? "" : "Especie: " + texto(mascota,"especie") + " · Raza: " + texto(mascota,"raza")
+                + "\nSexo: " + texto(mascota,"sexo") + " · Peso: " + texto(mascota,"pesoKg") + " kg");
+        paciente.setText(mascota == null ? "Seleccione un dueño y su mascota." :
+                "Paciente: " + texto(mascota,"nombre") + " (" + texto(mascota,"especie") + ")\nDueño: " + texto(duenoSeleccionado,"nombre"));
+        if (mascota != null) cargarHistorial(id(mascota), 0);
+    }
+
+    private void cargarHistorial(int pacienteId, int seleccionarId) {
+        int version = ++historialVersion;
+        api("GET", "/api/clinica/mascotas/" + pacienteId + "/consultas", null, n -> {
+            if (version != historialVersion || id(mascotaSeleccionada) != pacienteId) return;
+            historial.getItems().clear(); n.forEach(historial.getItems()::add);
+            historial.setPlaceholder(new Label("Este paciente aún no tiene consultas guardadas."));
+            historial.getItems().stream().filter(c -> id(c) == seleccionarId).findFirst().ifPresent(historial.getSelectionModel()::select);
+        }, this::error);
+    }
+
+    private void registrarDueno() {
+        TextField nombre = new TextField(), telefono = new TextField(), correo = new TextField(), direccion = new TextField();
+        Registro registro = registro("Registrar dueño", "Datos del dueño", new String[]{"Nombre *", "Teléfono", "Correo", "Dirección"}, nombre, telefono, correo, direccion);
+        registro.guardar.setOnAction(e -> {
+            try {
+                ObjectNode body = json.createObjectNode().put("nombre", requerido(nombre, "Nombre", 120))
+                        .put("telefono", limitado(telefono, "Teléfono", 20)).put("correo", limitado(correo, "Correo", 120))
+                        .put("direccion", limitado(direccion, "Dirección", 200));
+                if (!correo.getText().isBlank() && !correo.getText().trim().matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new IllegalArgumentException("Revise el correo electrónico.");
+                registro.guardar.setDisable(true);
+                api("POST", "/api/clinica/duenos", body, creado -> {
+                    registro.guardar.setDisable(false); registro.dialogo.close(); busquedaVersion++; buscar.setText(texto(creado,"nombre"));
+                    duenos.getItems().setAll(creado); duenos.getSelectionModel().select(creado); avisar("Dueño registrado. Ya puede agregar sus mascotas.", false);
+                }, registro::error);
+            } catch (IllegalArgumentException ex) { registro.error(ex.getMessage()); }
+        });
+        registro.dialogo.showAndWait();
+    }
+
+    private void registrarMascota() {
+        if (duenoSeleccionado == null) { error("Seleccione primero al dueño."); return; }
+        int duenoId = id(duenoSeleccionado);
+        TextField nombre = new TextField(), raza = new TextField(), pesoInicial = new TextField();
+        ComboBox<String> especie = new ComboBox<>(FXCollections.observableArrayList("Perro", "Gato", "Pez", "Pájaro", "Otro")); especie.setValue("Perro");
+        ComboBox<String> sexo = new ComboBox<>(FXCollections.observableArrayList("Sin especificar", "Macho", "Hembra")); sexo.setValue("Sin especificar");
+        DatePicker nacimiento = new DatePicker(); nacimiento.setEditable(false);
+        Registro registro = registro("Registrar mascota", "Dueño: " + texto(duenoSeleccionado,"nombre"),
+                new String[]{"Nombre *", "Especie *", "Raza", "Sexo", "Nacimiento", "Peso (kg)"}, nombre, especie, raza, sexo, nacimiento, pesoInicial);
+        registro.guardar.setOnAction(e -> {
+            try {
+                if (nacimiento.getValue() != null && nacimiento.getValue().isAfter(LocalDate.now())) throw new IllegalArgumentException("La fecha de nacimiento no puede ser futura.");
+                ObjectNode body = json.createObjectNode().put("nombre", requerido(nombre,"Nombre",60)).put("especie", especie.getValue())
+                        .put("raza", limitado(raza,"Raza",60)).put("sexo", "Macho".equals(sexo.getValue()) ? "M" : "Hembra".equals(sexo.getValue()) ? "H" : null)
+                        .put("fechaNacimiento", nacimiento.getValue() == null ? null : nacimiento.getValue().toString());
+                body.put("pesoKg", decimal(pesoInicial, "Peso", 2, new BigDecimal("9999.99")));
+                registro.guardar.setDisable(true);
+                api("POST", "/api/clinica/duenos/" + duenoId + "/mascotas", body, creada -> {
+                    registro.guardar.setDisable(false); registro.dialogo.close();
+                    if (id(duenoSeleccionado) == duenoId) { mascotasVersion++; mascotas.getItems().add(creada); mascotas.getSelectionModel().select(creada); }
+                    avisar("Mascota registrada y vinculada a su dueño.", false);
+                }, registro::error);
+            } catch (IllegalArgumentException ex) { registro.error(ex.getMessage()); }
+        });
+        registro.dialogo.showAndWait();
+    }
+
+    private void limpiarConsulta() {
+        motivo.clear(); peso.clear(); temperatura.clear(); diagnostico.clear(); tratamiento.clear();
     }
 
     private void guardarConsulta() {
-        if (mascotaSeleccionada == null) { mostrarError("Seleccione una mascota."); return; }
-        String cuerpo = "{\"mascotaId\":" + mascotaSeleccionada.path("id").asInt()
-                + ",\"veterinarioId\":2,\"motivo\":\"" + escapar(motivo.getText())
-                + "\",\"pesoKg\":" + numero(peso) + ",\"temperaturaC\":" + numero(temperatura)
-                + ",\"diagnostico\":\"" + escapar(diagnostico.getText())
-                + "\",\"tratamiento\":\"" + escapar(tratamiento.getText()) + "\"}";
-        request("POST", "/api/clinica/consultas", cuerpo).thenAccept(r -> Platform.runLater(() -> {
-            if (r.statusCode() == 201) {
-                seleccionarMascota();
-                mostrarInfo("Consulta guardada correctamente.");
-            } else mostrarError("No se pudo guardar la consulta.");
+        if (mascotaSeleccionada == null) { error("Seleccione al paciente."); return; }
+        try {
+            int pacienteId = id(mascotaSeleccionada);
+            ObjectNode body = json.createObjectNode().put("mascotaId", pacienteId).put("motivo", requerido(motivo,"Motivo",250))
+                    .put("pesoKg", decimal(peso,"Peso",2,new BigDecimal("9999.99")))
+                    .put("temperaturaC", decimal(temperatura,"Temperatura",1,new BigDecimal("999.9")))
+                    .put("diagnostico", diagnostico.getText().trim()).put("tratamiento", tratamiento.getText().trim());
+            guardar.setDisable(true);
+            api("POST", "/api/clinica/consultas", body, guardada -> {
+                guardar.setDisable(mascotaSeleccionada == null);
+                if (id(mascotaSeleccionada) == pacienteId) { limpiarConsulta(); cargarHistorial(pacienteId, id(guardada)); }
+                avisar("Consulta guardada en el historial del paciente y su dueño.", false);
+            }, mensaje -> { guardar.setDisable(mascotaSeleccionada == null); error(mensaje); });
+        } catch (IllegalArgumentException ex) { error(ex.getMessage()); }
+    }
+
+    private void verConsulta() {
+        if (consultaSeleccionada == null) return;
+        JsonNode consulta = consultaSeleccionada;
+        TextArea lectura = new TextArea("Paciente: " + texto(mascotaSeleccionada,"nombre") + "\nDueño: " + texto(duenoSeleccionado,"nombre")
+                + "\nFecha: " + fecha(texto(consulta,"fecha")) + "\n\nMotivo: " + texto(consulta,"motivo")
+                + "\nPeso: " + texto(consulta,"pesoKg") + " kg\nTemperatura: " + texto(consulta,"temperaturaC") + " °C"
+                + "\n\nDiagnóstico\n" + texto(consulta,"diagnostico") + "\n\nTratamiento\n" + texto(consulta,"tratamiento"));
+        lectura.setEditable(false); lectura.setWrapText(true); lectura.setPrefRowCount(18);
+        Dialog<Void> dialogo = dialogo("Historial clínico", "Consulta del " + fecha(texto(consulta,"fecha")));
+        dialogo.getDialogPane().setContent(lectura); dialogo.getDialogPane().setPrefWidth(650);
+        dialogo.getDialogPane().getButtonTypes().add(ButtonType.CLOSE); dialogo.showAndWait();
+    }
+
+    private void revisarInventario() {
+        Dialog<Void> dialogo = dialogo("Inventario", "Productos y servicios disponibles");
+        TableView<JsonNode> tabla = new TableView<>(); tabla.setId("inventario");
+        columna(tabla,"ID","id",55); columna(tabla,"Producto","nombre",240); columna(tabla,"Tipo","tipo",100);
+        columna(tabla,"Precio ($)","precio",90); columna(tabla,"Existencias","stockActual",100);
+        tabla.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        tabla.setPlaceholder(new Label("Sin productos para esta búsqueda.")); tabla.setPrefHeight(340);
+        TextField filtro = new TextField(); filtro.setPromptText("Buscar producto por nombre"); HBox.setHgrow(filtro, Priority.ALWAYS);
+        Label resultado = new Label("Consultando inventario..."); resultado.setWrapText(true);
+        Button buscarProducto = new Button("Buscar"); int[] version = {0};
+        Runnable consultar = () -> {
+            int actual = ++version[0]; resultado.setText("Consultando inventario...");
+            api("GET", "/api/productos?q=" + encode(filtro.getText().trim()), null, n -> {
+                if (actual != version[0] || !dialogo.isShowing()) return;
+                tabla.getItems().clear(); n.forEach(tabla.getItems()::add);
+                resultado.setText("Hasta 20 coincidencias. Refine la búsqueda para localizar un producto.");
+            }, mensaje -> { if (actual == version[0]) { tabla.getItems().clear(); resultado.setText(mensaje); } });
+        };
+        buscarProducto.setOnAction(e -> consultar.run()); filtro.setOnAction(e -> consultar.run());
+        Button usar = new Button("Usar en precuenta"); usar.disableProperty().bind(tabla.getSelectionModel().selectedItemProperty().isNull());
+        usar.setOnAction(e -> { JsonNode seleccionado=tabla.getSelectionModel().getSelectedItem(); catalogoPrecuenta.put(id(seleccionado),seleccionado); productoId.setText(String.valueOf(id(seleccionado))); dialogo.close(); });
+        dialogo.getDialogPane().setContent(new VBox(12, new HBox(8,filtro,buscarProducto), tabla, resultado, usar));
+        dialogo.getDialogPane().setPrefWidth(760); dialogo.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialogo.setOnShown(e -> consultar.run()); dialogo.showAndWait();
+    }
+
+    private void agregarDetalle() {
+        try {
+            int producto = Integer.parseInt(productoId.getText().trim());
+            BigDecimal unidades = decimal(cantidad,"Cantidad",2,new BigDecimal("999999.99"));
+            if (producto <= 0 || unidades == null) throw new IllegalArgumentException("Indique un producto y una cantidad positiva.");
+            JsonNode item=catalogoPrecuenta.get(producto);
+            if(item!=null && item.path("tipo").asText().equals("PRODUCTO")) {
+                BigDecimal acumulada=detalles.getItems().stream().filter(x -> x.startsWith(producto+" x ")).map(x -> new BigDecimal(x.split(" x ")[1])).reduce(unidades,BigDecimal::add);
+                if(acumulada.compareTo(item.path("stockActual").decimalValue())>0){error("La cantidad supera la existencia consultada.");return;}
+            }
+            detalles.getItems().add(producto + " x " + unidades.toPlainString()); productoId.clear();
+        } catch (IllegalArgumentException ex) { error("Indique un ID de producto válido y una cantidad positiva (máximo 2 decimales)."); }
+    }
+
+    private void enviarPrecuenta(Button boton) {
+        if (consultaSeleccionada == null) { error("Seleccione una consulta guardada del historial."); return; }
+        if (detalles.getItems().isEmpty()) { error("Agregue un producto o servicio a la precuenta."); return; }
+        int consultaId = id(consultaSeleccionada);
+        ObjectNode body = json.createObjectNode().put("consultaId", consultaId); var lineas = body.putArray("detalles");
+        for (String detalle : detalles.getItems()) { String[] partes = detalle.split(" x "); lineas.addObject().put("productoId",Integer.parseInt(partes[0])).put("cantidad",new BigDecimal(partes[1])); }
+        boton.setDisable(true);
+        api("POST", "/api/ventas/precuentas", body, n -> {
+            boton.setDisable(false); if (id(consultaSeleccionada) == consultaId) detalles.getItems().clear(); avisar("Precuenta enviada a caja.",false);
+        }, mensaje -> { boton.setDisable(false); error(mensaje); });
+    }
+
+    private void cerrarSesion() {
+        cerrandoSesion = true; ventanaPrincipal.getScene().getRoot().setDisable(true);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(SERVIDOR + "/api/auth/logout"))
+                .timeout(Duration.ofSeconds(8)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        http.sendAsync(request,HttpResponse.BodyHandlers.discarding()).whenComplete((r,e) -> Platform.runLater(() -> {
+            cookies.getCookieStore().removeAll(); ventanaPrincipal.close();
         }));
     }
 
-    private void enviarPrecuenta(ListView<String> detalles) {
-        if (consultaSeleccionada == null) { mostrarError("Seleccione una consulta del historial."); return; }
-        List<String> lineas = new ArrayList<>(detalles.getItems());
-        if (lineas.isEmpty()) { mostrarError("Agregue al menos un producto o servicio."); return; }
-        StringBuilder cuerpo = new StringBuilder("{\"consultaId\":")
-                .append(consultaSeleccionada.path("id").asInt()).append(",\"detalles\":[");
-        for (int i = 0; i < lineas.size(); i++) {
-            String[] partes = lineas.get(i).split(" x ", 2);
-            if (i > 0) cuerpo.append(',');
-            cuerpo.append("{\"productoId\":").append(partes[0])
-                    .append(",\"cantidad\":").append(partes[1]).append('}');
-        }
-        request("POST", "/api/ventas/precuentas", cuerpo.append("]}").toString())
-                .thenAccept(r -> Platform.runLater(() -> {
-                    if (r.statusCode() == 201) mostrarInfo("Precuenta enviada a caja.");
-                    else mostrarError("No se pudo enviar la precuenta.");
-                }));
+    private void api(String metodo, String ruta, JsonNode body, Consumer<JsonNode> success, Consumer<String> failure) {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVIDOR + ruta)).timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");
+        HttpRequest request = "POST".equals(metodo) ? b.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build() : b.GET().build();
+        http.sendAsync(request,HttpResponse.BodyHandlers.ofString()).whenComplete((r,ex) -> Platform.runLater(() -> {
+            if (cerrandoSesion) return;
+            if (ex != null) { failure.accept("No se pudo conectar al servidor. Intente nuevamente."); return; }
+            if (r.statusCode() < 200 || r.statusCode() >= 300) {
+                failure.accept(r.statusCode() == 401 || r.statusCode() == 403 ? "Su sesión no permite esta operación. Cierre sesión e ingrese nuevamente." :
+                        "No se pudo guardar o consultar la información (" + r.statusCode() + "). Revise los datos e intente nuevamente."); return;
+            }
+            try { success.accept(json.readTree(r.body())); }
+            catch (Exception err) { failure.accept("La respuesta del servidor no es válida."); }
+        }));
     }
 
-    private void verificarServidor() {
-        request("GET", "/api/salud", null).thenAccept(r -> Platform.runLater(() ->
-                estado.setText(r.statusCode() == 200 ? "Servidor: conectado" : "Servidor: error")))
-                .exceptionally(e -> { Platform.runLater(() -> estado.setText("Servidor: sin conexión")); return null; });
+    private Registro registro(String titulo, String encabezado, String[] etiquetas, Control... controles) {
+        Dialog<Void> d = dialogo(titulo, encabezado); Label error = new Label(); error.setWrapText(true); error.getStyleClass().add("error");
+        Button guardar = new Button("Guardar"); guardar.getStyleClass().add("primary");
+        d.getDialogPane().setContent(new VBox(12,grid(etiquetas,controles),error,guardar));
+        d.getDialogPane().getButtonTypes().add(ButtonType.CANCEL); d.getDialogPane().setPrefWidth(580);
+        // Una petición enviada termina antes de permitir cerrar o volver a enviar el formulario.
+        d.getDialogPane().lookupButton(ButtonType.CANCEL).disableProperty().bind(guardar.disabledProperty());
+        d.setOnCloseRequest(e -> { if (guardar.isDisabled()) e.consume(); });
+        return new Registro(d,guardar,error);
     }
-
-    private java.util.concurrent.CompletableFuture<HttpResponse<String>> request(
-            String metodo, String ruta, String cuerpo) {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVIDOR + ruta))
-                .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json");
-        if ("POST".equals(metodo)) b.POST(HttpRequest.BodyPublishers.ofString(cuerpo));
-        else b.GET();
-        return http.sendAsync(b.build(), HttpResponse.BodyHandlers.ofString());
+    private record Registro(Dialog<Void> dialogo, Button guardar, Label aviso) {
+        void error(String mensaje) { guardar.setDisable(false); aviso.setText(mensaje); }
     }
-    private List<JsonNode> parseArray(String body) {
-        try { List<JsonNode> lista = new ArrayList<>(); json.readTree(body).forEach(lista::add); return lista; }
-        catch (Exception e) { return List.of(); }
+    private Dialog<Void> dialogo(String titulo, String encabezado) {
+        Dialog<Void> d = new Dialog<>(); d.initOwner(ventanaPrincipal); d.setTitle(titulo); d.setHeaderText(encabezado);
+        d.getDialogPane().getStylesheets().add(tema()); d.setResizable(true); return d;
     }
-    private static String encode(String v) { return java.net.URLEncoder.encode(v, java.nio.charset.StandardCharsets.UTF_8); }
-    private static String escapar(String v) { return v.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " "); }
-    private static String numero(TextField campo) { return campo.getText().isBlank() ? "null" : campo.getText().trim(); }
-    private static HBox espacio() { HBox h = new HBox(); HBox.setHgrow(h, Priority.ALWAYS); return h; }
-    private void mostrarError(String s) { mostrarMensaje(Alert.AlertType.ERROR, s); }
-    private void mostrarInfo(String s) { mostrarMensaje(Alert.AlertType.INFORMATION, s); }
-    private void mostrarMensaje(Alert.AlertType tipo, String mensaje) {
-        Alert dialogo = new Alert(tipo, mensaje);
-        dialogo.initOwner(ventanaPrincipal);
-        dialogo.setTitle("Sistema Veterinaria · Consultorio");
-        dialogo.setHeaderText(tipo == Alert.AlertType.ERROR ? "Revise la información" : "Operación completada");
-        dialogo.getDialogPane().getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
-        dialogo.showAndWait();
+    private static GridPane grid(String[] etiquetas, Control... campos) {
+        GridPane grid = new GridPane(); grid.setHgap(12); grid.setVgap(10);
+        ColumnConstraints label = new ColumnConstraints(115), field = new ColumnConstraints(); field.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().addAll(label,field);
+        for (int i=0;i<campos.length;i++) { Label l=new Label(etiquetas[i]); l.setLabelFor(campos[i]); campos[i].setMaxWidth(Double.MAX_VALUE); grid.addRow(i,l,campos[i]); }
+        return grid;
     }
+    private static VBox panel(String titulo, Node... nodos) {
+        Label label = new Label(titulo); label.getStyleClass().add("section-title");
+        VBox box = new VBox(12,label); box.getStyleClass().add("card"); box.getChildren().addAll(nodos); VBox.setVgrow(box,Priority.ALWAYS);
+        for (Node n:nodos) if (n instanceof ListView<?>) VBox.setVgrow(n,Priority.ALWAYS); return box;
+    }
+    private static ListCell<JsonNode> textoCelda(java.util.function.Function<JsonNode,String> texto) {
+        return new ListCell<>() { @Override protected void updateItem(JsonNode item,boolean empty) { super.updateItem(item,empty); setText(empty || item==null ? null : texto.apply(item)); } };
+    }
+    private static void columna(TableView<JsonNode> tabla,String nombre,String key,int ancho) {
+        TableColumn<JsonNode,String> c=new TableColumn<>(nombre); c.setPrefWidth(ancho); c.setCellValueFactory(v -> new SimpleStringProperty(texto(v.getValue(),key))); tabla.getColumns().add(c);
+    }
+    private static String requerido(TextField campo,String nombre,int max) { String v=limitado(campo,nombre,max); if(v.isBlank()) throw new IllegalArgumentException(nombre+" es obligatorio."); return v; }
+    private static String limitado(TextField campo,String nombre,int max) { String v=campo.getText().trim(); if(v.length()>max) throw new IllegalArgumentException(nombre+": máximo "+max+" caracteres."); return v; }
+    private static BigDecimal decimal(TextField campo,String nombre,int escala,BigDecimal max) {
+        if(campo.getText().isBlank()) return null;
+        try { BigDecimal n=new BigDecimal(campo.getText().trim().replace(',','.')); if(n.signum()<=0 || n.compareTo(max)>0 || n.stripTrailingZeros().scale()>escala) throw new NumberFormatException(); return n; }
+        catch(NumberFormatException e) { throw new IllegalArgumentException(nombre+": use un número positivo, hasta "+max+" y "+escala+" decimales."); }
+    }
+    private static int id(JsonNode n) { return n==null ? 0 : n.path("id").asInt(); }
+    private static String texto(JsonNode n,String key) { return n==null || n.path(key).isNull() ? "" : n.path(key).asText(""); }
+    private static String fecha(String s) { try { return LocalDateTime.parse(s).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")); } catch(Exception e) { return s; } }
+    private static String encode(String s) { return URLEncoder.encode(s,java.nio.charset.StandardCharsets.UTF_8); }
+    private String tema() { return getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm(); }
+    private void avisar(String mensaje,boolean error) { aviso.setText(mensaje); aviso.setStyle(error ? "-fx-text-fill:#B3261E;" : "-fx-text-fill:#21865B;"); }
+    private void error(String mensaje) { avisar(mensaje,true); }
     public static void main(String[] args) { launch(args); }
 }

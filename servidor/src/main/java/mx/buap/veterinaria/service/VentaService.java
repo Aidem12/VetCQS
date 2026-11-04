@@ -56,6 +56,7 @@ public class VentaService {
 
     @Transactional
     public Venta crearPrecuenta(PrecuentaRequest request) {
+        if(ventas.findByConsultaId(request.consultaId()).isPresent())throw new ResponseStatusException(HttpStatus.CONFLICT,"La consulta ya tiene una precuenta registrada");
         Consulta consulta = consultas.findById(request.consultaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Consulta no encontrada"));
@@ -71,6 +72,7 @@ public class VentaService {
 
     @Transactional
     public Venta crear(VentaRequest request) {
+        if(request.descuento().signum()!=0) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"El descuento requiere autorización administrativa");
         Venta venta = new Venta();
         BigDecimal subtotal = BigDecimal.ZERO;
         Map<Integer, BigDecimal> cantidades = new HashMap<>();
@@ -106,16 +108,18 @@ public class VentaService {
     }
 
     @Transactional
-    public Venta cobrar(Integer id, List<PagoRequest> requests) {
-        Venta venta = ventas.findById(id)
+    public Venta cobrar(Integer id, List<PagoRequest> requests, Integer operadorId) {
+        Turno turno = turnos.findOpenForUpdate().orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Abra un turno antes de cobrar"));
+        if(!turno.getCajero().getId().equals(operadorId))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"El turno pertenece a otro cajero");
+        Venta venta = ventas.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Venta no encontrada"));
         if (venta.getEstado() != Venta.Estado.ABIERTA
                 && venta.getEstado() != Venta.Estado.PRECUENTA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "La venta ya no está disponible para cobro");
         }
         BigDecimal pagado = BigDecimal.ZERO;
-        Turno turno = turnos.findByCierreIsNull().orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.CONFLICT, "Abra un turno antes de cobrar"));
+        BigDecimal sumaSolicitada = requests.stream().map(PagoRequest::monto).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if(sumaSolicitada.compareTo(venta.getTotal())!=0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"La suma de pagos debe ser igual al total");
         for (PagoRequest request : requests) {
             if (request.forma() == Pago.Forma.EFECTIVO
                     && (request.recibido() == null || request.recibido().compareTo(request.monto()) < 0)) {
@@ -143,7 +147,7 @@ public class VentaService {
                 }
                 producto.setStockActual(producto.getStockActual().subtract(detalle.getCantidad()));
                 productos.save(producto);
-                Usuario operador = usuarios.findAll().stream().filter(Usuario::isActivo).findFirst()
+                Usuario operador = usuarios.findById(operadorId).filter(Usuario::isActivo)
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "No hay operador activo"));
                 MovimientoInventario movimiento = new MovimientoInventario();
                 movimiento.setProducto(producto); movimiento.setUsuario(operador);

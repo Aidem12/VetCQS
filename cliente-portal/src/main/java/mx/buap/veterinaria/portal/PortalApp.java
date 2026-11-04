@@ -24,17 +24,26 @@ public class PortalApp extends Application {
     private final ObjectMapper json = new ObjectMapper();
     private HttpClient http;
     private Stage stage;
+    private CookieManager cookies;
+    private Process cliente;
     private final Label error = new Label();
 
     @Override public void start(Stage primaryStage) {
         stage = primaryStage;
-        CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
+        Platform.setImplicitExit(false);
+        stage.setOnCloseRequest(e -> {
+            if (cliente != null && cliente.isAlive()) { e.consume(); return; }
+            Platform.exit();
+        });
+        cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
         CookieHandler.setDefault(cookies);
         http = HttpClient.newBuilder().cookieHandler(cookies).connectTimeout(Duration.ofSeconds(4)).build();
         showLogin();
     }
 
     private void showLogin() {
+        error.setText("");
+        stage.setMaximized(false);
         TextField usuario = new TextField(); usuario.setPromptText("Usuario");
         PasswordField contrasena = new PasswordField(); contrasena.setPromptText("Contraseña");
         Button entrar = new Button("Iniciar sesión"); entrar.setDefaultButton(true);
@@ -50,6 +59,7 @@ public class PortalApp extends Application {
         box.getStyleClass().add("card"); box.setMaxWidth(390); box.setMaxHeight(Region.USE_PREF_SIZE);
         StackPane content = new StackPane(box); content.setPadding(new Insets(28));
         BorderPane root = new BorderPane(content, header("Acceso al sistema", null), null, null, null);
+        root.setStyle("-fx-background-color: #101B2E;");
         stage.setTitle("Sistema Veterinaria · Portal");
         stage.setMinWidth(500); stage.setMinHeight(540);
         stage.setScene(scene(root, 580, 580)); stage.show();
@@ -79,6 +89,7 @@ public class PortalApp extends Application {
 
     private void login(String user, String password, Button button) {
         if (user.isBlank() || password.isBlank()) { error.setText("Capture usuario y contraseña."); return; }
+        error.setText("");
         button.setDisable(true);
         request("POST", "/api/auth/login", "{\"usuario\":\"" + escape(user) + "\",\"contrasena\":\"" + escape(password) + "\"}")
             .thenAccept(response -> Platform.runLater(() -> {
@@ -91,48 +102,56 @@ public class PortalApp extends Application {
     }
 
     private void route(JsonNode session) {
-        String role = session.path("rol").asText();
-        if ("ADMINISTRADOR".equals(role)) { new AdminView(http, SERVER, stage, session).show(); return; }
-        String modulo = "CAJERO".equals(role) ? "cliente-caja" : "cliente-consultorio";
-        Button abrir = new Button("Abrir " + ("CAJERO".equals(role) ? "Caja" : "Consultorio"));
-        abrir.setOnAction(e -> lanzarCliente(modulo, session));
-        Button logout = new Button("Cerrar sesión"); logout.setOnAction(e -> logout());
-        Label destination = new Label("Sesión iniciada como " + role
-                + "\nEl área autorizada está lista para abrir.");
-        destination.setWrapText(true);
-        destination.getStyleClass().add("muted");
-        abrir.getStyleClass().add("primary");
-        abrir.setMaxWidth(Double.MAX_VALUE);
-        VBox box = new VBox(18, title("Portal"), destination, abrir, logout);
-        box.getStyleClass().add("card"); box.setMaxWidth(420); box.setMaxHeight(Region.USE_PREF_SIZE);
-        StackPane content = new StackPane(box); content.setPadding(new Insets(28));
-        stage.setScene(scene(new BorderPane(content, header("Área de trabajo", null), null, null, null), 580, 540));
-    }
-
-    private void lanzarCliente(String modulo, JsonNode session) {
-        try {
-            String cookie = CookieHandler.getDefault() instanceof CookieManager manager
-                    ? manager.getCookieStore().getCookies().stream()
-                            .filter(c -> "JSESSIONID".equalsIgnoreCase(c.getName()))
-                            .map(c -> c.getName() + "=" + c.getValue()).findFirst().orElse("")
-                    : "";
-            Path raiz = Path.of(System.getProperty("user.dir")).toAbsolutePath().getParent();
-            Path maven = Path.of(System.getProperty("user.home"),
-                    "Tools", "apache-maven-3.10.0", "bin", "mvn.cmd");
-            String ejecutable = Files.exists(maven) ? maven.toString() : "mvn.cmd";
-            ProcessBuilder proceso = new ProcessBuilder(ejecutable, "javafx:run",
-                    "-Dservidor=" + SERVER, "-Dsesion=" + cookie);
-            proceso.directory(raiz.resolve(modulo).toFile());
-            proceso.inheritIO().start();
-            stage.hide();
-        } catch (Exception ex) {
-            error.setText("No se pudo abrir el módulo autorizado: " + ex.getMessage());
+        switch (session.path("rol").asText()) {
+            case "ADMINISTRADOR" -> new AdminView(http, SERVER, stage, session, this::logout).show();
+            case "CAJERO" -> lanzarCliente("cliente-caja");
+            case "VETERINARIO" -> lanzarCliente("cliente-consultorio");
+            default -> { cookies.getCookieStore().removeAll(); error.setText("El rol de esta cuenta no está habilitado."); }
         }
     }
 
+    private void lanzarCliente(String modulo) {
+        try {
+            String cookie = cookies.getCookieStore().getCookies().stream()
+                    .filter(c -> "JSESSIONID".equalsIgnoreCase(c.getName()))
+                    .map(c -> c.getName() + "=" + c.getValue()).findFirst().orElse("");
+            Path raiz = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+            if (!Files.isDirectory(raiz.resolve(modulo))) raiz = raiz.getParent();
+            boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
+            Path maven = Path.of(System.getProperty("user.home"), "Tools", "apache-maven-3.10.0", "bin", windows ? "mvn.cmd" : "mvn");
+            String ejecutable = Files.exists(maven) ? maven.toString() : (windows ? "mvn.cmd" : "mvn");
+            ProcessBuilder proceso = new ProcessBuilder(ejecutable, "javafx:run", "-Dservidor=" + SERVER,
+                    "-Dsesion=" + cookie);
+            proceso.directory(raiz.resolve(modulo).toFile());
+            cliente = iniciarProceso(proceso);
+            stage.hide();
+            // El portal permanece vivo para recuperar el login cuando el área de trabajo termina.
+            cliente.onExit().thenAccept(terminado -> Platform.runLater(() -> {
+                cliente = null;
+                logout(terminado.exitValue() == 0 ? null : "No se pudo mantener abierta el área de trabajo. Verifique Java 21 y Maven.");
+            }));
+        } catch (Exception ex) {
+            error.setText("No se pudo abrir el área de trabajo. Verifique Java 21 y Maven.");
+            stage.show();
+        }
+    }
+
+    protected Process iniciarProceso(ProcessBuilder proceso) throws java.io.IOException {
+        return proceso.inheritIO().start();
+    }
+
     private void logout() {
-        request("POST", "/api/auth/logout", "")
-            .thenRun(() -> Platform.runLater(this::showLogin));
+        logout(null);
+    }
+
+    private void logout(String mensaje) {
+        stage.getScene().getRoot().setDisable(true);
+        request("POST", "/api/auth/logout", "").thenAccept(response -> Platform.runLater(() -> {
+            cookies.getCookieStore().removeAll();
+            showLogin();
+            if (response.statusCode() >= 400) error.setText("Sesión local cerrada. No se pudo contactar al servidor.");
+            else if (mensaje != null) error.setText(mensaje);
+        }));
     }
     private CompletableFuture<HttpResponse<String>> request(String method, String path, String body) {
         try {

@@ -59,6 +59,14 @@ public class Venta {
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<VentaDetalle> detalles = new ArrayList<>();
 
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="descuento_autorizado_por")
+    private Usuario descuentoAutorizadoPor;
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="cancelada_por")
+    private Usuario canceladaPor;
+    @Column(name="motivo_cancelacion",length=200) private String motivoCancelacion;
+    public void autorizarDescuento(Usuario admin){descuentoAutorizadoPor=admin;}
+    public void cancelar(Usuario admin,String motivo){canceladaPor=admin;motivoCancelacion=motivo;estado=Estado.CANCELADA;}
+
     public Integer getId() { return id; }
     public String getFolio() { return folio; }
     public void setFolio(String folio) { this.folio = folio; }

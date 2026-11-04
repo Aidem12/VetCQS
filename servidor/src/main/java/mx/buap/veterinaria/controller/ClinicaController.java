@@ -66,11 +66,13 @@ public class ClinicaController {
 
     @PostMapping("/consultas")
     @ResponseStatus(HttpStatus.CREATED)
-    public ConsultaResumen crearConsulta(@Valid @RequestBody ConsultaRequest request) {
+    public ConsultaResumen crearConsulta(@Valid @RequestBody ConsultaRequest request, jakarta.servlet.http.HttpSession session) {
+        Object usuarioId = session.getAttribute("usuarioId");
+        if (!(usuarioId instanceof Integer id)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         Consulta consulta = new Consulta();
         consulta.setMascota(mascotas.findById(request.mascotaId()).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Mascota no encontrada")));
-        consulta.setVeterinario(usuarios.findById(request.veterinarioId()).orElseThrow(() ->
+        consulta.setVeterinario(usuarios.findById(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Veterinario no encontrado")));
         consulta.setMotivo(request.motivo());
         consulta.setPesoKg(request.pesoKg());

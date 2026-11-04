@@ -51,7 +51,7 @@ public class CajaApp extends Application {
     private static final String DIRECCION_SUCURSAL =
             "Sucursal Puebla 11 Sur\nAv 11 Sur 12914 GPE HIDALGO Puebla, PUE.";
     private static final String CAJA = "Caja 1";
-    private static final String ATENDIO = "Juan Martinez Perez";
+    private String atendio = "Cajero";
     private static final DateTimeFormatter FORMATO_FECHA_TICKET =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
     private HttpClient http;
@@ -63,6 +63,11 @@ public class CajaApp extends Application {
     private final TableView<Renglon> tabla = new TableView<>(carrito);
     private Stage ventanaPrincipal;
     private boolean servidorDisponible;
+    private volatile int ventaCargada;
+    private boolean cobroEnCurso;
+    private String ultimoMetodo="Efectivo";
+    private BigDecimal descuentoActual=BigDecimal.ZERO;
+    private final Label clienteVenta = new Label("Venta de mostrador");
     private static final List<ProductoTemporal> PRODUCTOS_DE_PRUEBA = List.of(
             new ProductoTemporal(101, "7501000000011", "Croquetas adulto 2 kg", new BigDecimal("389.00"), new BigDecimal("2")),
             new ProductoTemporal(102, "7501000000028", "Desparasitante, tableta", new BigDecimal("45.00"), new BigDecimal("40")),
@@ -80,7 +85,9 @@ public class CajaApp extends Application {
         String sesion = System.getProperty("sesion", "");
         if (!sesion.isBlank()) {
             try {
-                cookies.getCookieStore().add(URI.create(SERVIDOR), HttpCookie.parse(sesion).get(0));
+                HttpCookie cookie = HttpCookie.parse(sesion).get(0);
+                cookie.setPath("/"); cookie.setVersion(0);
+                cookies.getCookieStore().add(URI.create(SERVIDOR), cookie);
             } catch (IllegalArgumentException ex) {
                 estadoServidor.setText("Sesión inválida");
             }
@@ -93,7 +100,9 @@ public class CajaApp extends Application {
         VBox identidad = new VBox(2, marca, encabezado);
         estadoServidor.setStyle("-fx-background-color: #315B79; -fx-background-radius: 14px; "
                 + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;");
-        HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor);
+        Button cerrarSesion = new Button("Cerrar sesión");
+        cerrarSesion.setOnAction(e -> cerrarSesion());
+        HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, cerrarSesion);
         barraSuperior.setPadding(new Insets(14, 20, 14, 20));
         barraSuperior.setStyle("-fx-background-color: #17324D;");
 
@@ -108,6 +117,7 @@ public class CajaApp extends Application {
         cantidad.setCellValueFactory(new PropertyValueFactory<>("cantidad"));
         cantidad.setEditable(true);
         cantidad.setOnEditCommit(e -> {
+            if(ventaCargada!=0){tabla.refresh();return;}
             BigDecimal nuevaCantidad = e.getNewValue();
             if (nuevaCantidad != null && nuevaCantidad.compareTo(BigDecimal.ZERO) > 0) {
                 e.getRowValue().setCantidad(nuevaCantidad);
@@ -132,7 +142,7 @@ public class CajaApp extends Application {
         tabla.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8; "
                 + "-fx-border-radius: 6px; -fx-background-radius: 6px;");
 
-        total.setStyle("-fx-font-size: 28px; -fx-font-weight: bold;");
+        total.setStyle("-fx-font-size: 30px; -fx-font-weight: bold; -fx-text-fill: #21865B;");
         Button cobrar = new Button("Cobrar");
         cobrar.setMaxWidth(Double.MAX_VALUE);
         cobrar.setStyle("-fx-background-color: #21865B; -fx-text-fill: white; "
@@ -143,7 +153,7 @@ public class CajaApp extends Application {
         inventario.setStyle("-fx-background-color: #E8F0F7; -fx-text-fill: #17324D; "
                 + "-fx-font-weight: bold; -fx-padding: 9px;");
         inventario.setOnAction(e -> revisarInventario());
-        Label tituloTotal = new Label("TOTAL A COBRAR");
+        Label tituloTotal = new Label("RESUMEN DE VENTA · TOTAL A COBRAR");
         tituloTotal.setStyle("-fx-text-fill: #6B7C8F; -fx-font-size: 11px; -fx-font-weight: bold;");
         resumenCarrito.setStyle("-fx-text-fill: #7A8A99; -fx-font-size: 12px;");
         VBox panelTotal = new VBox(12, tituloTotal, total, resumenCarrito, cobrar, inventario);
@@ -152,22 +162,28 @@ public class CajaApp extends Application {
         panelTotal.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8; "
                 + "-fx-border-radius: 8px; -fx-background-radius: 8px;");
 
-        VBox centro = new VBox(8, captura, tabla);
+        Button precuentas = new Button("F1 · Cargar precuenta médica"); precuentas.setOnAction(e -> cargarPrecuenta());
+        Button agregarBtn = new Button("Agregar · Enter"); agregarBtn.getStyleClass().add("primary");agregarBtn.setOnAction(e -> buscar(captura));
+        HBox.setHgrow(captura,Priority.ALWAYS);
+        Button autorizar=new Button("Autorización administrativa");autorizar.setOnAction(e -> autorizarVenta());
+        VBox centro = new VBox(12, new HBox(8,precuentas,autorizar), new HBox(8,captura,agregarBtn), tabla, clienteVenta);
         VBox.setVgrow(tabla, Priority.ALWAYS);
         centro.setPadding(new Insets(18, 12, 12, 18));
         Label atajos = new Label("ENTER  Buscar y agregar     SUPR  Eliminar producto seleccionado");
         atajos.setStyle("-fx-text-fill: #718294; -fx-font-size: 12px;");
         atajos.setPadding(new Insets(8, 18, 12, 18));
 
-        BorderPane raiz = new BorderPane(centro, barraSuperior, panelTotal, atajos, null);
+        BorderPane raiz = new BorderPane(centro, new VBox(barraSuperior, new TurnosView(http, ventana).acciones()), panelTotal, atajos, null);
         raiz.setStyle("-fx-background-color: #F3F6F9;");
-        Scene escena = new Scene(raiz, 1024, 640);
+        Scene escena = new Scene(raiz, 1200, 760);
         escena.getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
-        ventana.setMinWidth(850);
+        ventana.setMinWidth(1100);
         ventana.setMinHeight(560);
         BorderPane.setMargin(panelTotal, new Insets(18, 18, 12, 6));
         escena.setOnKeyPressed(e -> {
-            if (e.getCode() == javafx.scene.input.KeyCode.DELETE) {
+            if(e.getCode()==KeyCode.F1){cargarPrecuenta();e.consume();}
+            if(e.getCode()==KeyCode.F5){cobrar();e.consume();}
+            if (e.getCode() == javafx.scene.input.KeyCode.DELETE && !(e.getTarget() instanceof javafx.scene.control.TextInputControl)) {
                 eliminarSeleccionado();
             }
         });
@@ -177,9 +193,23 @@ public class CajaApp extends Application {
         ventana.show();
         captura.requestFocus();
         verificarServidor();
+        request("GET","/api/auth/sesion",null).thenAccept(r -> Platform.runLater(() -> {
+            if(r.statusCode()==200)try{atendio=json.readTree(r.body()).path("nombre").asText("Cajero");encabezado.setText("Punto de venta / Caja · "+atendio);}catch(Exception ignored){}
+        }));
+    }
+
+    private void cerrarSesion() {
+        ventanaPrincipal.getScene().getRoot().setDisable(true);
+        request("POST", "/api/auth/logout", "").whenComplete((r, error) -> Platform.runLater(() -> {
+            http.cookieHandler().filter(CookieManager.class::isInstance)
+                    .map(CookieManager.class::cast).ifPresent(c -> c.getCookieStore().removeAll());
+            carrito.clear();
+            ventanaPrincipal.close();
+        }));
     }
 
     private void buscar(TextField captura) {
+        if(ventaCargada!=0){mostrarError("La venta guardada está lista para cobro. No se puede modificar desde la captura.");return;}
         String texto = captura.getText().trim();
         if (texto.isEmpty()) return;
         if (!servidorDisponible) {
@@ -238,12 +268,30 @@ public class CajaApp extends Application {
     }
 
     private void cobrar() {
+        if(cobroEnCurso)return;
         if (carrito.isEmpty()) {
             mostrarError("Agregue al menos un producto");
             return;
         }
         BigDecimal importe = total();
+        javafx.scene.control.ComboBox<String> metodo = new javafx.scene.control.ComboBox<>(FXCollections.observableArrayList("Efectivo", "Tarjeta", "Transferencia", "Mixto"));
+        metodo.setValue("Efectivo"); metodo.setMaxWidth(Double.MAX_VALUE);
+        TextField parteTarjeta = new TextField("0.00"), parteTransferencia = new TextField("0.00");
         TextField recibido = new TextField(formatearDinero(importe));
+        Label cambioVista = new Label("Cambio: $0.00");
+        javafx.scene.layout.GridPane mezcla = new javafx.scene.layout.GridPane(); mezcla.setHgap(12);mezcla.setVgap(8);
+        mezcla.addRow(0,new Label("Tarjeta ($)"),parteTarjeta);mezcla.addRow(1,new Label("Transferencia ($)"),parteTransferencia);
+        mezcla.visibleProperty().bind(metodo.valueProperty().isEqualTo("Mixto"));mezcla.managedProperty().bind(mezcla.visibleProperty());
+        recibido.disableProperty().bind(metodo.valueProperty().isEqualTo("Tarjeta").or(metodo.valueProperty().isEqualTo("Transferencia")));
+        Runnable actualizarCambio = () -> {try {
+            BigDecimal efectivoDebido = metodo.getValue().equals("Mixto") ? importe.subtract(new BigDecimal(parteTarjeta.getText())).subtract(new BigDecimal(parteTransferencia.getText())) : importe;
+            BigDecimal cambio = recibido.isDisabled() ? BigDecimal.ZERO : new BigDecimal(recibido.getText()).subtract(efectivoDebido);
+            cambioVista.setText(cambio.signum()<0 ? "Falta efectivo: $"+cambio.abs() : "Cambio: $"+cambio);
+        } catch(Exception ex){cambioVista.setText("Revise los importes");}};
+        recibido.textProperty().addListener((o,a,b) -> actualizarCambio.run());
+        parteTarjeta.textProperty().addListener((o,a,b) -> actualizarCambio.run());
+        parteTransferencia.textProperty().addListener((o,a,b) -> actualizarCambio.run());
+        metodo.valueProperty().addListener((o,a,b) -> actualizarCambio.run());
         recibido.setPromptText("Efectivo recibido");
         VBox productos = new VBox(6);
         productos.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8; "
@@ -267,8 +315,14 @@ public class CajaApp extends Application {
         recibidoLabel.setStyle("-fx-text-fill: #6B7C8F; -fx-font-size: 11px; -fx-font-weight: bold;");
         recibido.setStyle("-fx-font-size: 14px; -fx-padding: 9px; -fx-background-color: white; "
                 + "-fx-border-color: #B8C7D6; -fx-border-radius: 6px; -fx-background-radius: 6px;");
-        VBox contenido = new VBox(12, franja, productosTitulo, productos,
-                totalDialogo, recibidoLabel, recibido);
+        javafx.scene.control.CheckBox facturaDemo=new javafx.scene.control.CheckBox("Solicitar comprobante fiscal de demostración");
+        TextField rfc=new TextField(), razon=new TextField(), regimen=new TextField(), postal=new TextField(), uso=new TextField("G03");
+        VBox fiscal=new VBox(8,new Label("DATOS FISCALES · DEMOSTRACIÓN"),facturaDemo,new Label("RFC"),rfc,new Label("Razón social"),razon,new Label("Régimen fiscal"),regimen,new Label("Código postal"),postal,new Label("Uso CFDI"),uso);
+        fiscal.getStyleClass().add("card");fiscal.setPrefWidth(330);
+        for(TextField campo:java.util.List.of(rfc,razon,regimen,postal,uso))campo.disableProperty().bind(facturaDemo.selectedProperty().not());
+        Label avisoFiscal=new Label("Sin timbrado SAT ni envío de correo. Comprobante únicamente de demostración.");avisoFiscal.setWrapText(true);fiscal.getChildren().add(avisoFiscal);
+        VBox pagoPanel=new VBox(12,productosTitulo,productos,totalDialogo,new Label("Método de pago"),metodo,mezcla,recibidoLabel,recibido,cambioVista);pagoPanel.getStyleClass().add("card");pagoPanel.setPrefWidth(390);
+        VBox contenido = new VBox(12, franja, new HBox(16,pagoPanel,fiscal));
         contenido.setPadding(new Insets(16));
         contenido.setStyle("-fx-background-color: #F3F6F9;");
         Alert dialogo = new Alert(Alert.AlertType.CONFIRMATION);
@@ -279,12 +333,20 @@ public class CajaApp extends Application {
         dialogo.getDialogPane().setContent(contenido);
         dialogo.getDialogPane().setStyle("-fx-background-color: #F3F6F9; "
                 + "-fx-border-color: #D7E0E8; -fx-border-width: 1px;");
-        dialogo.getDialogPane().setMinWidth(520);
+        dialogo.getDialogPane().setMinWidth(820);
         dialogo.getDialogPane().setMinHeight(390);
         dialogo.showAndWait().filter(r -> r.getButtonData().isDefaultButton()).ifPresent(r -> {
             try {
-                BigDecimal efectivo = new BigDecimal(recibido.getText());
-                if (efectivo.compareTo(importe) < 0) {
+                if(facturaDemo.isSelected() && (rfc.getText().isBlank() || razon.getText().isBlank() || !regimen.getText().matches("\\d{3}") || !postal.getText().matches("\\d{5}") || uso.getText().isBlank())) {mostrarError("Complete correctamente los datos fiscales de demostración.");return;}
+                BigDecimal tarjeta = metodo.getValue().equals("Tarjeta") ? importe : metodo.getValue().equals("Mixto") ? new BigDecimal(parteTarjeta.getText()) : BigDecimal.ZERO;
+                BigDecimal transferencia = metodo.getValue().equals("Transferencia") ? importe : metodo.getValue().equals("Mixto") ? new BigDecimal(parteTransferencia.getText()) : BigDecimal.ZERO;
+                BigDecimal montoEfectivo = importe.subtract(tarjeta).subtract(transferencia);
+                if(tarjeta.signum()<0 || transferencia.signum()<0 || montoEfectivo.signum()<0 || tarjeta.scale()>2 || transferencia.scale()>2) {
+                    mostrarError("Revise la distribución del pago. Los importes deben sumar el total.");return;
+                }
+                BigDecimal recibidoEfectivo = montoEfectivo.signum()==0 ? BigDecimal.ZERO : new BigDecimal(recibido.getText());
+                BigDecimal efectivo = recibidoEfectivo.add(tarjeta).add(transferencia);
+                if (recibidoEfectivo.scale()>2 || recibidoEfectivo.compareTo(montoEfectivo) < 0) {
                     mostrarError("Pago insuficiente",
                             "La cantidad recibida es menor al total a pagar.");
                     return;
@@ -299,29 +361,42 @@ public class CajaApp extends Application {
                     return;
                 }
                 String cuerpo = json.writeValueAsString(VentaRequest.desde(carrito, BigDecimal.ZERO));
-                request("POST", "/api/ventas", cuerpo).thenAccept(creada -> {
-                    if (creada.statusCode() != 201) {
-                        Platform.runLater(() -> mostrarOperacionFallida(creada));
+                cobroEnCurso=true;ventanaPrincipal.getScene().getRoot().setDisable(true);ultimoMetodo=metodo.getValue();
+                request(ventaCargada==0 ? "POST" : "GET", ventaCargada==0 ? "/api/ventas" : "/api/ventas/"+ventaCargada, cuerpo).whenComplete((creada, falloCreacion) -> {
+                    if(falloCreacion!=null){Platform.runLater(() -> {finCobro();mostrarError("No se pudo preparar el cobro. Revise las ventas pendientes antes de reintentar.");});return;}
+                    if (creada.statusCode() != 201 && creada.statusCode() != 200) {
+                        Platform.runLater(() -> {finCobro();mostrarOperacionFallida(creada);});
                         return;
                     }
                     try {
                         int id = json.readTree(creada.body()).get("id").asInt();
-                        String pago = "[{\"forma\":\"EFECTIVO\",\"monto\":" + importe
-                                + ",\"recibido\":" + efectivo + "}]";
-                        request("POST", "/api/ventas/" + id + "/cobro", pago).thenAccept(cobrada ->
+                        ventaCargada=id;
+                        var pagos = json.createArrayNode();
+                        if(montoEfectivo.signum()>0) pagos.addObject().put("forma","EFECTIVO").put("monto",montoEfectivo).put("recibido",recibidoEfectivo);
+                        if(tarjeta.signum()>0) pagos.addObject().put("forma","TARJETA").put("monto",tarjeta);
+                        if(transferencia.signum()>0) pagos.addObject().put("forma","TRANSFERENCIA").put("monto",transferencia);
+                        String pago = pagos.toString();
+                        request("POST", "/api/ventas/" + id + "/cobro", pago).whenComplete((cobrada, falloCobro) ->
                                 Platform.runLater(() -> {
+                                    finCobro();
+                                    if(falloCobro!=null){mostrarError("No se pudo confirmar el cobro. Consulte la venta antes de reintentar.");return;}
                                     if (cobrada.statusCode() == 200) {
                                         List<Renglon> venta = List.copyOf(carrito);
+                                        ventaCargada=0; descuentoActual=BigDecimal.ZERO; clienteVenta.setText("Venta de mostrador");
                                         carrito.clear();
                                         actualizarTotal();
                                         mostrarPedidoCompletado(importe, efectivo, "V-" + id);
                                         mostrarTicket(venta, importe, efectivo, "V-" + id);
+                                        if(facturaDemo.isSelected()) {
+                                            var fiscalBody=json.createObjectNode().put("rfcReceptor",rfc.getText().trim()).put("razonSocial",razon.getText().trim()).put("regimenFiscal",regimen.getText()).put("codigoPostal",postal.getText()).put("usoCfdi",uso.getText()).put("idempotencia","demo-venta-"+id);
+                                            request("POST","/api/facturas/venta/"+id,fiscalBody.toString()).whenComplete((f,fallo) -> Platform.runLater(() -> mostrarInfo(fallo==null && f.statusCode()<300 ? "Comprobante de demostración registrado. No tiene validez fiscal." : "La venta fue cobrada, pero no se pudo registrar el comprobante de demostración.")));
+                                        }
                                     } else {
                                         mostrarOperacionFallida(cobrada);
                                     }
                                 }));
                     } catch (Exception ex) {
-                        Platform.runLater(() -> mostrarError(ex.getMessage()));
+                        Platform.runLater(() -> {finCobro();mostrarError(ex.getMessage());});
                     }
                 });
             } catch (NumberFormatException | com.fasterxml.jackson.core.JsonProcessingException ex) {
@@ -332,12 +407,73 @@ public class CajaApp extends Application {
         });
     }
 
+    private void finCobro(){cobroEnCurso=false;ventanaPrincipal.getScene().getRoot().setDisable(false);}
+
+    private void autorizarVenta() {
+        if(carrito.isEmpty()){mostrarError("Agregue productos o cargue una precuenta.");return;}
+        try {
+            String body=json.writeValueAsString(VentaRequest.desde(carrito,BigDecimal.ZERO));
+            request(ventaCargada==0?"POST":"GET",ventaCargada==0?"/api/ventas":"/api/ventas/"+ventaCargada,body).whenComplete((r,ex) -> Platform.runLater(() -> {
+                if(ex!=null || r.statusCode()<200 || r.statusCode()>=300){mostrarError("No se pudo preparar la venta para autorización.");return;}
+                try {JsonNode venta=json.readTree(r.body());ventaCargada=venta.path("id").asInt();dialogoAutorizacion(venta);}catch(Exception err){mostrarError("Respuesta de venta inválida.");}
+            }));
+        }catch(Exception ex){mostrarError("No se pudo preparar la venta.");}
+    }
+    private void dialogoAutorizacion(JsonNode venta) {
+        javafx.scene.control.Dialog<Void> d=new javafx.scene.control.Dialog<>();d.initOwner(ventanaPrincipal);d.setTitle("Autorización administrativa");d.setHeaderText("Venta "+venta.path("folio").asText()+" · $"+venta.path("total").asText());
+        d.getDialogPane().getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
+        javafx.scene.control.ComboBox<String> accion=new javafx.scene.control.ComboBox<>(FXCollections.observableArrayList("DESCUENTO","CAMBIAR_PRECIO","ELIMINAR_PRODUCTO","CANCELAR_VENTA"));accion.setValue("DESCUENTO");
+        javafx.scene.control.ComboBox<String> producto=new javafx.scene.control.ComboBox<>();java.util.List<JsonNode> detalles=new java.util.ArrayList<>();venta.path("detalles").forEach(detalles::add);
+        detalles.forEach(x -> producto.getItems().add(x.path("producto").path("nombre").asText()));if(!detalles.isEmpty())producto.getSelectionModel().select(0);
+        TextField monto=new TextField("0.00"),motivo=new TextField(),usuario=new TextField();javafx.scene.control.PasswordField clave=new javafx.scene.control.PasswordField();
+        Label error=new Label();error.setWrapText(true);Button confirmar=new Button("Autorizar operación");confirmar.getStyleClass().add("primary");
+        d.getDialogPane().setContent(new VBox(10,new Label("Operación"),accion,new Label("Producto (precio / eliminación)"),producto,new Label("Nuevo precio o descuento ($)"),monto,new Label("Motivo"),motivo,new Label("Usuario administrador"),usuario,new Label("Contraseña"),clave,error,confirmar));
+        d.getDialogPane().setPrefWidth(560);d.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CANCEL);
+        d.setOnCloseRequest(e -> {if(confirmar.isDisabled())e.consume();});
+        d.getDialogPane().lookupButton(javafx.scene.control.ButtonType.CANCEL).disableProperty().bind(confirmar.disabledProperty());
+        confirmar.setOnAction(e -> {try {
+            if(motivo.getText().isBlank()||usuario.getText().isBlank()||clave.getText().isBlank())throw new IllegalArgumentException("Complete motivo y credenciales.");
+            var payload=json.createObjectNode().put("accion",accion.getValue()).put("importe",new BigDecimal(monto.getText())).put("motivo",motivo.getText()).put("usuarioAdmin",usuario.getText()).put("claveAdmin",clave.getText());
+            int index=producto.getSelectionModel().getSelectedIndex();if(index>=0)payload.put("detalleId",detalles.get(index).path("id").asInt());
+            confirmar.setDisable(true);
+            request("POST","/api/ventas/"+ventaCargada+"/autorizar",payload.toString()).whenComplete((res,ex) -> Platform.runLater(() -> {
+                confirmar.setDisable(false);
+                if(ex!=null||res.statusCode()!=200){error.setText("Operación rechazada. Revise permisos, credenciales e importes.");return;}
+                try {JsonNode actual=json.readTree(res.body());carrito.clear();
+                    if(actual.path("estado").asText().equals("CANCELADA")){ventaCargada=0;descuentoActual=BigDecimal.ZERO;clienteVenta.setText("Venta cancelada con autorización");}
+                    else {descuentoActual=actual.path("descuento").decimalValue();actual.path("detalles").forEach(det -> {JsonNode p=det.path("producto");Renglon fila=new Renglon(p.path("id").asInt(),p.path("nombre").asText(),det.path("precioUnitario").decimalValue());fila.setCantidad(det.path("cantidad").decimalValue());carrito.add(fila);});clienteVenta.setText(actual.path("folio").asText()+" · Descuento autorizado: $"+descuentoActual);}
+                    actualizarTotal();clave.clear();d.close();
+                }catch(Exception err){error.setText("No se pudo actualizar la venta. Vuelva a cargarla.");}
+            }));
+        }catch(Exception ex){error.setText("Revise los campos y el importe.");}});d.showAndWait();
+    }
+
+    private void cargarPrecuenta() {
+        if(!carrito.isEmpty()){mostrarError("Termine la venta actual antes de cargar otra precuenta.");return;}
+        request("GET","/api/ventas/pendientes",null).whenComplete((r,ex) -> Platform.runLater(() -> {
+            if(ex!=null || r.statusCode()!=200){mostrarError("No se pudieron consultar las precuentas.");return;}
+            try {
+                javafx.scene.control.ListView<JsonNode> lista=new javafx.scene.control.ListView<>();json.readTree(r.body()).forEach(lista.getItems()::add);
+                lista.setPrefSize(650,320);lista.setCellFactory(v -> new javafx.scene.control.ListCell<>(){
+                    @Override protected void updateItem(JsonNode n,boolean vacia){super.updateItem(n,vacia);setText(vacia||n==null?null:n.path("folio").asText()+" · "+n.path("dueno").asText("Mostrador")+" · "+n.path("paciente").asText()+" · $"+n.path("total").asText());}
+                });
+                Alert d=new Alert(Alert.AlertType.CONFIRMATION);prepararDialogo(d);d.setTitle("Precuentas médicas y ventas pendientes");d.setHeaderText("Seleccione la cuenta que desea cobrar");d.getDialogPane().setContent(lista);
+                d.showAndWait().filter(b -> b==javafx.scene.control.ButtonType.OK).ifPresent(b -> {
+                    JsonNode n=lista.getSelectionModel().getSelectedItem();if(n==null)return;
+                    ventaCargada=n.path("id").asInt();descuentoActual=n.path("descuento").decimalValue();
+                    n.path("detalles").forEach(det -> {JsonNode p=det.path("producto");Renglon renglon=new Renglon(p.path("id").asInt(),p.path("nombre").asText(),det.path("precioUnitario").decimalValue());renglon.setCantidad(det.path("cantidad").decimalValue());carrito.add(renglon);});
+                    clienteVenta.setText(n.path("folio").asText()+" · Dueño: "+n.path("dueno").asText("Mostrador")+" · Paciente: "+n.path("paciente").asText());actualizarTotal();
+                });
+            }catch(Exception err){mostrarError("Respuesta de precuentas no válida.");}
+        }));
+    }
+
     private void mostrarPedidoCompletado(BigDecimal importe, BigDecimal efectivo, String folio) {
         BigDecimal cambio = efectivo.subtract(importe).setScale(2);
         Label titulo = new Label("Pedido completado");
         titulo.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #21865B;");
         Label detalle = new Label("Total pagado: $" + importe.setScale(2)
-                + "\nEfectivo recibido: $" + formatearDinero(efectivo)
+                + "\nTotal recibido (todos los medios): $" + formatearDinero(efectivo)
                 + "\nCambio para el cliente: $" + formatearDinero(cambio));
         detalle.setStyle("-fx-font-size: 14px; -fx-text-fill: #425466;");
         VBox contenido = new VBox(12, titulo, detalle);
@@ -364,9 +500,9 @@ public class CajaApp extends Application {
         negocio.setAlignment(javafx.geometry.Pos.CENTER);
         negocio.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #17324D;");
         Label datos = new Label(DIRECCION_SUCURSAL + "\n" + CAJA
-                + "\nAtendió: " + ATENDIO
+                + "\nAtendió: " + atendio
                 + "\nFecha: " + LocalDateTime.now().format(FORMATO_FECHA_TICKET)
-                + "\nFolio: " + folio);
+                + "\nFolio: " + folio + "\nPago: " + ultimoMetodo);
         datos.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 12px; "
                 + "-fx-text-fill: #425466;");
         ticket.getChildren().addAll(negocio, datos, separadorTicket());
@@ -382,7 +518,7 @@ public class CajaApp extends Application {
 
         ticket.getChildren().addAll(separadorTicket(),
                 lineaTicket("TOTAL", importe),
-                lineaTicket("EFECTIVO", efectivo),
+                lineaTicket("RECIBIDO", efectivo),
                 lineaTicket("CAMBIO", efectivo.subtract(importe)));
         Label agradecimiento = new Label("Gracias por su compra");
         agradecimiento.setMaxWidth(Double.MAX_VALUE);
@@ -494,6 +630,7 @@ public class CajaApp extends Application {
     }
 
     private void eliminarSeleccionado() {
+        if(ventaCargada!=0){mostrarError("La venta guardada requiere autorización para modificar sus productos.");return;}
         Renglon seleccionado = tabla.getSelectionModel().getSelectedItem();
         if (seleccionado != null) {
             carrito.remove(seleccionado);
@@ -502,7 +639,7 @@ public class CajaApp extends Application {
     }
 
     private BigDecimal total() {
-        return carrito.stream().map(Renglon::getImporte).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return carrito.stream().map(Renglon::getImporte).reduce(BigDecimal.ZERO, BigDecimal::add).subtract(descuentoActual).setScale(2,java.math.RoundingMode.HALF_UP);
     }
 
     private void actualizarTotal() {
@@ -514,7 +651,7 @@ public class CajaApp extends Application {
     }
 
     private static String formatearDinero(BigDecimal valor) {
-        return valor.stripTrailingZeros().toPlainString();
+        return valor.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString();
     }
 
     private static TableCell<Renglon, BigDecimal> celdaMonetaria() {

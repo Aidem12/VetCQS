@@ -38,11 +38,33 @@ Para empezar de cero: `docker compose down -v && docker compose up -d --build`.
 ## 3. Correr los clientes en cada computadora
 
 ```bash
-cd cliente-caja
+cd cliente-portal
 mvn javafx:run -Dservidor=http://IP_DEL_SERVIDOR:8080
 ```
 
-Igual para `cliente-consultorio`. La barra superior debe decir **Servidor: conectado**.
+Use Java 21 y conserve las carpetas de clientes juntas. El portal abre directamente
+Administración, Caja o Consultorio según el rol. **Cerrar sesión** en el área de
+trabajo invalida la sesión y regresa al login; puede ingresar con otra cuenta.
+El portal debe permanecer en ejecución mientras se utiliza Caja o Consultorio.
+
+En Consultorio:
+
+1. Busque al dueño por nombre/teléfono o use **Registrar dueño** para guardar sus datos.
+2. Seleccione al dueño y use **Registrar mascota**. Las mascotas pertenecen al dueño seleccionado.
+3. Seleccione al paciente, redacte la consulta y pulse **Guardar consulta**. El servidor identifica al veterinario por su sesión.
+4. Seleccione una entrada del historial y pulse **Ver consulta** para leer diagnóstico y tratamiento guardados.
+5. Use **Revisar inventario** para consultar existencias por nombre. El veterinario tiene acceso de lectura al catálogo.
+
+Tras actualizar esta versión, reinicie el servidor para cargar los permisos y la
+vinculación de consultas a la sesión. No se requieren cambios al esquema de la base de datos.
+
+### Pruebas de sesiones y consultorio
+
+`mvn -f servidor/pom.xml test` comprueba los endpoints, permisos y relaciones clínicas.
+En Windows, `herramientas/pruebas-ui/ejecutar.ps1` recorre login/logout de los tres
+roles y el alta de dueño, mascota, consulta, historial e inventario con una API local
+en memoria. Requiere Java 21, Maven y una sesión de escritorio. No usa la base de datos
+real; sustituye el lanzamiento del proceso Maven por las ventanas de trabajo durante la prueba.
 
 ## 4. Probar impresora y cajón (semana 3)
 

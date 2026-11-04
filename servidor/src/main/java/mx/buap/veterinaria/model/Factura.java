@@ -19,7 +19,7 @@ public class Factura {
  @Column(nullable=false) private boolean mock=true;
  @Column(length=80) private String idempotencia;
  @Column(name="respuesta_mock") private String respuestaMock;
- public Integer getId(){return id;} public Venta getVenta(){return venta;} public void setVenta(Venta v){venta=v;}
+ public Integer getId(){return id;} @com.fasterxml.jackson.annotation.JsonIgnore public Venta getVenta(){return venta;} public void setVenta(Venta v){venta=v;}
  public String getRfcReceptor(){return rfcReceptor;} public void setRfcReceptor(String v){rfcReceptor=v;}
  public String getRazonSocial(){return razonSocial;} public void setRazonSocial(String v){razonSocial=v;}
  public String getRegimenFiscal(){return regimenFiscal;} public void setRegimenFiscal(String v){regimenFiscal=v;}

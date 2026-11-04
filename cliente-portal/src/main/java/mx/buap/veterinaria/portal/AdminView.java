@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
 
 /** Administración protegida: todas las operaciones reutilizan el HttpClient de la sesión. */
 final class AdminView {
+    private final Runnable logout;
     private final HttpClient http;
     private final String server;
     private final Stage stage;
@@ -29,7 +30,8 @@ final class AdminView {
     private final TableView<JsonNode> products = new TableView<>();
     private final Label status = new Label();
 
-    AdminView(HttpClient http, String server, Stage stage, JsonNode session) {
+    AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout) {
+        this.logout = logout;
         this.http = http;
         this.server = server;
         this.stage = stage;
@@ -37,6 +39,8 @@ final class AdminView {
     }
 
     void show() {
+        Button cerrarSesion = new Button("Cerrar sesión");
+        cerrarSesion.setOnAction(e -> logout.run());
         configureEmployees();
         configureProducts();
         Button refresh = new Button("Actualizar");
@@ -72,7 +76,7 @@ final class AdminView {
         Tab inventario = new Tab("Productos e inventario", right); inventario.setClosable(false);
         TabPane sections = new TabPane(personal, inventario);
         BorderPane root = new BorderPane(sections);
-        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), refresh));
+        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, refresh, cerrarSesion)));
         BorderPane.setMargin(sections, new Insets(18));
         status.getStyleClass().add("muted"); status.setWrapText(true);
         root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));

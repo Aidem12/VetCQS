@@ -32,6 +32,14 @@ public class AuthController {
             })
             .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error","Credenciales inválidas")));
     }
+    @GetMapping("/sesion")
+    public ResponseEntity<?> sesion(HttpSession session) {
+        Object id=session.getAttribute("usuarioId");
+        if (!(id instanceof Integer usuarioId)) return ResponseEntity.status(401).build();
+        return usuarios.findById(usuarioId).filter(mx.buap.veterinaria.model.Usuario::isActivo)
+            .<ResponseEntity<?>>map(u -> ResponseEntity.ok(Map.of("id",u.getId(),"nombre",u.getNombre(),"rol",u.getRol().name())))
+            .orElseGet(() -> ResponseEntity.status(401).build());
+    }
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpSession session) {
         session.invalidate();
