@@ -100,7 +100,7 @@ public class CajaApp extends Application {
         VBox identidad = new VBox(2, marca, encabezado);
         estadoServidor.setStyle("-fx-background-color: #315B79; -fx-background-radius: 14px; "
                 + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;");
-        Button cerrarSesion = new Button("Cerrar sesión");
+        Button cerrarSesion = new Button("Cerrar sesión"); cerrarSesion.getStyleClass().add("logout");
         cerrarSesion.setOnAction(e -> cerrarSesion());
         HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, cerrarSesion);
         barraSuperior.setPadding(new Insets(14, 20, 14, 20));
@@ -438,7 +438,7 @@ public class CajaApp extends Application {
             confirmar.setDisable(true);
             request("POST","/api/ventas/"+ventaCargada+"/autorizar",payload.toString()).whenComplete((res,ex) -> Platform.runLater(() -> {
                 confirmar.setDisable(false);
-                if(ex!=null||res.statusCode()!=200){error.setText("Operación rechazada. Revise permisos, credenciales e importes.");return;}
+                if(ex!=null||res.statusCode()!=200){error.setText(ex!=null ? "No se pudo conectar al servidor." : mensajeRespuesta(res));return;}
                 try {JsonNode actual=json.readTree(res.body());carrito.clear();
                     if(actual.path("estado").asText().equals("CANCELADA")){ventaCargada=0;descuentoActual=BigDecimal.ZERO;clienteVenta.setText("Venta cancelada con autorización");}
                     else {descuentoActual=actual.path("descuento").decimalValue();actual.path("detalles").forEach(det -> {JsonNode p=det.path("producto");Renglon fila=new Renglon(p.path("id").asInt(),p.path("nombre").asText(),det.path("precioUnitario").decimalValue());fila.setCantidad(det.path("cantidad").decimalValue());carrito.add(fila);});clienteVenta.setText(actual.path("folio").asText()+" · Descuento autorizado: $"+descuentoActual);}
@@ -754,9 +754,7 @@ public class CajaApp extends Application {
     }
 
     private void mostrarOperacionFallida(HttpResponse<String> respuesta) {
-        String titulo = respuesta.statusCode() == 409
-                ? "Sin existencias en inventario"
-                : "No se pudo completar la operación";
+        String titulo = "No se pudo completar la operación";
         mostrarError(titulo, mensajeRespuesta(respuesta));
     }
 

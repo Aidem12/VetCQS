@@ -54,6 +54,10 @@ public class FlujoClinicoTest {
                     ((ObjectNode)body).put("id",records.size()+1).put("fecha","2026-11-03T10:30:00"); records.add(body); result=body; code=201;
                 } else if(path.matches("/api/clinica/mascotas/\\d+/consultas")) {
                     int pet=Integer.parseInt(path.split("/")[4]); result=json.valueToTree(records.stream().filter(c -> c.path("mascotaId").asInt()==pet).toList());
+                } else if(path.equals("/api/empleados")) {
+                    result=json.valueToTree(List.of(Map.of("id",1,"nombre","Persona uno"),Map.of("id",2,"nombre","Persona dos")));
+                } else if(path.equals("/api/productos/catalogo")) {
+                    result=json.valueToTree(List.of(Map.of("id",1,"nombre","Servicio uno"),Map.of("id",2,"nombre","Producto dos")));
                 } else if(path.equals("/api/productos")) {
                     result=json.readTree("[{\"id\":10,\"nombre\":\"Vacuna\",\"tipo\":\"PRODUCTO\",\"stockActual\":8,\"precio\":280}]");
                 }
@@ -66,9 +70,15 @@ public class FlujoClinicoTest {
         try {
             fx(() -> { portalStage=new Stage(); new TestPortal().start(portalStage); return null; });
             login("ADMINISTRADOR"); waitFor(() -> fxUnchecked(() -> portalStage.getTitle().contains("Administración")));
+            waitFor(() -> fxUnchecked(() -> ((TableView<?>)portalStage.getScene().lookup("#personal")).getItems().size()==2));
+            check(fx(() -> ((JsonNode)((TableView<?>)portalStage.getScene().lookup("#personal")).getItems().get(0)).path("nombre").asText().equals("Persona uno")),"Personal renderizado por registro, no como arreglo JSON");
+            check(fx(() -> button(portalStage,"Historial de cortes")!=null),"Historial disponible para administrador");
             click(portalStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Cookie administrativa invalidada");
             login("CAJERO"); waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing()));
             check("cliente-caja".equals(requestedModule),"Entrada directa a Caja");
+            click(workStage,"Abrir turno"); Stage opening=dialog("Apertura de turno · Fondo inicial");
+            check(fx(() -> hasText(opening,"$0.50") && hasText(opening,"$1") && hasText(opening,"$2")),"Apertura con monedas y billetes");
+            fx(() -> {opening.close();return null;});
             click(workStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Sesión de caja invalidada");
             workStage=null;
             login("VETERINARIO"); waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing()));
@@ -97,7 +107,10 @@ public class FlujoClinicoTest {
             fx(() -> { history.close(); return null; });
             click(workStage,"Revisar inventario"); Stage inventory=dialog("Inventario");
             waitFor(() -> fxUnchecked(() -> ((TableView<?>)inventory.getScene().lookup("#inventario")).getItems().size()==1));
-            fx(() -> { inventory.close(); return null; });
+            fx(() -> {((TableView<?>)inventory.getScene().lookup("#inventario")).getSelectionModel().select(0);return null;});
+            click(inventory,"Usar en precuenta");
+            waitFor(() -> fxUnchecked(() -> ((TableView<?>)workStage.getScene().lookup("#detalle-precuenta")).getItems().size()==1));
+            check(fx(() -> workStage.getScene().getRoot().lookupAll(".button").stream().noneMatch(n -> n instanceof Button b && b.getText().equals("Buscar servicio o insumo"))),"Sin buscador duplicado");
             owners.add(json.createObjectNode().put("id",2).put("nombre","Otro dueño"));
             click(workStage,"Buscar"); waitFor(() -> fxUnchecked(() -> list("#duenos").getItems().size()==2));
             fx(() -> { list("#duenos").getSelectionModel().select(1); return null; });

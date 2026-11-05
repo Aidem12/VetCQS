@@ -29,6 +29,7 @@ final class AdminView {
     private final TableView<JsonNode> employees = new TableView<>();
     private final TableView<JsonNode> products = new TableView<>();
     private final Label status = new Label();
+    private final Label connection = new Label("Servidor: verificando...");
 
     AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout) {
         this.logout = logout;
@@ -40,6 +41,7 @@ final class AdminView {
 
     void show() {
         Button cerrarSesion = new Button("Cerrar sesión");
+        cerrarSesion.getStyleClass().add("logout");
         cerrarSesion.setOnAction(e -> logout.run());
         configureEmployees();
         configureProducts();
@@ -74,9 +76,12 @@ final class AdminView {
         products.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         Tab personal = new Tab("Personal", left); personal.setClosable(false);
         Tab inventario = new Tab("Productos e inventario", right); inventario.setClosable(false);
+        Button cortes = new Button("Historial de cortes");
+        cortes.setOnAction(e -> new CortesView(http, stage, server).historial());
+        connection.getStyleClass().add("connection-status");
         TabPane sections = new TabPane(personal, inventario);
         BorderPane root = new BorderPane(sections);
-        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, refresh, cerrarSesion)));
+        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, connection, cortes, refresh, cerrarSesion)));
         BorderPane.setMargin(sections, new Insets(18));
         status.getStyleClass().add("muted"); status.setWrapText(true);
         root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));
@@ -88,6 +93,7 @@ final class AdminView {
     }
 
     private void configureEmployees() {
+        employees.setId("personal");
         employees.setPlaceholder(new Label("Sin personal"));
         addColumn(employees, "Id", "id", 55);
         addColumn(employees, "Nombre", "nombre", 150);
@@ -97,6 +103,7 @@ final class AdminView {
     }
 
     private void configureProducts() {
+        products.setId("catalogo");
         products.setPlaceholder(new Label("Sin productos"));
         addColumn(products, "Id", "id", 55);
         addColumn(products, "Nombre", "nombre", 150);
@@ -115,8 +122,12 @@ final class AdminView {
     }
 
     private void load() {
+        request("GET", "/api/salud", "").thenAccept(r -> Platform.runLater(() -> {
+            boolean ok = r.statusCode() == 200; connection.setText(ok ? "Servidor: conectado" : "Servidor: sin conexión");
+            connection.getStyleClass().removeAll("connected", "disconnected"); connection.getStyleClass().add(ok ? "connected" : "disconnected");
+        }));
         request("GET", "/api/empleados", "").thenAccept(r -> Platform.runLater(() -> fill(employees, r)));
-        request("GET", "/api/productos", "").thenAccept(r -> Platform.runLater(() -> fill(products, r)));
+        request("GET", "/api/productos/catalogo", "").thenAccept(r -> Platform.runLater(() -> fill(products, r)));
     }
 
     private void fill(TableView<JsonNode> table, HttpResponse<String> response) {
@@ -125,7 +136,9 @@ final class AdminView {
             return;
         }
         try {
-            table.setItems(FXCollections.observableArrayList(json.readTree(response.body())));
+            JsonNode rows = json.readTree(response.body());
+            if (!rows.isArray()) throw new IllegalArgumentException("Se esperaba una lista");
+            table.getItems().clear(); rows.forEach(table.getItems()::add);
             status.setText("Datos actualizados.");
         } catch (Exception e) {
             status.setText("Respuesta inválida del servidor.");
@@ -163,6 +176,7 @@ final class AdminView {
     }
 
     private void productForm(JsonNode selected) {
+        TextField barcode = new TextField(selected == null ? "" : selected.path("codigoBarras").asText(""));
         TextField name = new TextField(selected == null ? "" : selected.path("nombre").asText());
         ComboBox<String> type = new ComboBox<>(FXCollections.observableArrayList("PRODUCTO", "SERVICIO"));
         type.setValue(selected == null ? "PRODUCTO" : selected.path("tipo").asText());
@@ -171,9 +185,9 @@ final class AdminView {
         TextField minimum = new TextField(selected == null ? "0" : selected.path("stockMinimo").asText());
         price.setPromptText("0.00");
         Dialog<String[]> dialog = form(selected == null ? "Nuevo producto" : "Editar producto", "Datos del producto o servicio",
-                new String[]{"Nombre", "Tipo", "Precio ($)", "Existencias", "Stock mínimo"}, name, type, price, stock, minimum);
+                new String[]{"Nombre", "Tipo", "Precio ($)", "Existencias", "Stock mínimo", "Código de barras"}, name, type, price, stock, minimum, barcode);
         dialog.showAndWait().ifPresent(fields -> {
-            if (fields.length != 5 || fields[0].isBlank() || !fields[1].equalsIgnoreCase("PRODUCTO")
+            if (fields.length != 6 || fields[0].isBlank() || !fields[1].equalsIgnoreCase("PRODUCTO")
                     && !fields[1].equalsIgnoreCase("SERVICIO")) {
                 status.setText("Datos de producto inválidos.");
                 return;
@@ -185,7 +199,8 @@ final class AdminView {
                 body.put("precio", new BigDecimal(fields[2].trim()));
                 body.put("stockActual", new BigDecimal(fields[3].trim()));
                 body.put("stockMinimo", new BigDecimal(fields[4].trim()));
-                body.put("manejaCaducidad", false);
+                body.put("codigoBarras", fields[5].trim());
+                body.put("manejaCaducidad", selected != null && selected.path("manejaCaducidad").asBoolean());
                 String path = selected == null ? "/api/productos" : "/api/productos/" + selected.path("id").asInt();
                 submit(selected == null ? "POST" : "PUT", path, body, "Producto guardado.");
             } catch (RuntimeException e) {
@@ -269,7 +284,8 @@ final class AdminView {
     }
 
     private void showError(HttpResponse<String> response) {
-        status.setText("Servidor rechazó la operación (" + response.statusCode() + ").");
+        try { JsonNode error = json.readTree(response.body()); status.setText(error.path("message").asText(error.path("error").asText("Operación rechazada (" + response.statusCode() + ")."))); }
+        catch (Exception e) { status.setText("No se pudo completar la operación (" + response.statusCode() + ")."); }
     }
 
     private static boolean isRole(String role) {

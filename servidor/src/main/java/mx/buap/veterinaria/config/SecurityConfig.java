@@ -22,8 +22,11 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable()).cors(cors -> {});
         http.addFilterBefore(sessionAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         http.authorizeHttpRequests(auth -> auth
+            .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
             .requestMatchers("/api/auth/**", "/api/salud/**").permitAll()
             .requestMatchers("/api/empleados/**", "/api/inventario/**").hasRole("ADMINISTRADOR")
+            .requestMatchers(HttpMethod.GET, "/api/productos/catalogo").hasRole("ADMINISTRADOR")
+            .requestMatchers(HttpMethod.GET, "/api/turnos/historial", "/api/turnos/*/reporte").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .requestMatchers(HttpMethod.GET, "/api/productos/**").hasAnyRole("ADMINISTRADOR", "CAJERO", "VETERINARIO")
             .requestMatchers("/api/productos/**").hasRole("ADMINISTRADOR")
             .requestMatchers(HttpMethod.POST, "/api/ventas/precuentas").hasAnyRole("VETERINARIO", "CAJERO")

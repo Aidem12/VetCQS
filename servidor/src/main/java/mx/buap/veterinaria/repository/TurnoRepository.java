@@ -11,5 +11,6 @@ public interface TurnoRepository extends JpaRepository<Turno, Integer> {
     @Query("select t from Turno t where t.cierre is null")
     Optional<Turno> findOpenForUpdate();
     Optional<Turno> findByCierreIsNull();
+    java.util.List<Turno> findTop50ByCierreIsNotNullOrderByCierreDesc();
     java.util.List<Turno> findTop50ByCajeroIdAndCierreIsNotNullOrderByCierreDesc(Integer cajeroId);
 }

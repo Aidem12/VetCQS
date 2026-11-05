@@ -48,6 +48,9 @@ public class ProductoController {
         return productos.findTop20ByNombreContainingIgnoreCaseAndActivoTrueOrderByNombre(q);
     }
 
+    @GetMapping("/catalogo")
+    public List<Producto> catalogo() { return productos.findAll(org.springframework.data.domain.Sort.by("nombre")); }
+
     @PostMapping
     public Producto crear(@Valid @RequestBody ProductoRequest request) {
         Producto producto = new Producto();

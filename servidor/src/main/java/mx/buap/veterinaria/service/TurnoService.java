@@ -19,9 +19,10 @@ public class TurnoService {
    AutorizacionService a,BitacoraRepository b,VentaRepository v,ObjectMapper j){turnos=t;usuarios=u;pagos=p;salidas=s;auth=a;bitacora=b;ventas=v;json=j;}
  public Map<String,Object> abrir(TurnoAperturaRequest r,Integer operador){
   if(turnos.findByCierreIsNull().isPresent())throw fallo("Ya existe un turno abierto");
+  validarConteo(r.denominaciones(),r.fondoInicial());
   Usuario u=usuarios.findById(operador).filter(Usuario::isActivo).filter(x -> x.getRol()==Usuario.Rol.CAJERO).orElseThrow(() -> fallo("Cajero no válido"));
   Turno t=new Turno();t.setCajero(u);t.setFondoInicial(r.fondoInicial());turnos.save(t);
-  auth.registrar(operador,null,"APERTURA","turno",t.getId(),"Fondo: "+r.fondoInicial());return resumen(t);
+  auth.registrar(operador,null,"APERTURA","turno",t.getId(),"Fondo: "+r.fondoInicial()+" | Denominaciones: "+r.denominaciones());return resumen(t);
  }
  public Turno propioAbierto(Integer operador){
   Turno t=turnos.findOpenForUpdate().orElseThrow(() -> fallo("Abra un turno antes de continuar"));
@@ -62,10 +63,21 @@ public class TurnoService {
   return reporte;
  }
  @Transactional(readOnly=true) public Map<String,Object> reporte(Integer id,Integer operador){
-  Turno t=turnos.findById(id).filter(x -> x.getCajero().getId().equals(operador) && x.getCierre()!=null).orElseThrow(() -> fallo("Corte no disponible"));
+  Turno t=turnos.findById(id).filter(x -> (esAdmin(operador) || x.getCajero().getId().equals(operador)) && x.getCierre()!=null).orElseThrow(() -> fallo("Corte no disponible"));
   try{return json.readValue(bitacora.findTopByTablaAndRegistroIdAndAccionOrderByIdDesc("turno",id,"CORTE").orElseThrow().getDetalle(),new TypeReference<Map<String,Object>>(){});}
   catch(Exception e){return Map.of("id",t.getId(),"efectivoEsperado",t.getEfectivoEsperado(),"efectivoContado",t.getEfectivoContado(),"diferencia",t.getEfectivoContado().subtract(t.getEfectivoEsperado()),"cierre",t.getCierre());}
  }
- @Transactional(readOnly=true) public List<Map<String,Object>> historial(Integer operador){return turnos.findTop50ByCajeroIdAndCierreIsNotNullOrderByCierreDesc(operador).stream().map(t -> {Map<String,Object> m=new LinkedHashMap<>(resumen(t));m.put("cierre",t.getCierre());return m;}).toList();}
+ @Transactional(readOnly=true) public List<Map<String,Object>> historial(Integer operador){return (esAdmin(operador) ? turnos.findTop50ByCierreIsNotNullOrderByCierreDesc() : turnos.findTop50ByCajeroIdAndCierreIsNotNullOrderByCierreDesc(operador)).stream().map(t -> {Map<String,Object> m=new LinkedHashMap<>(resumen(t));m.put("cierre",t.getCierre());return m;}).toList();}
+ private boolean esAdmin(Integer id){return usuarios.findById(id).filter(Usuario::isActivo).map(u -> u.getRol()==Usuario.Rol.ADMINISTRADOR).orElse(false);}
+ private void validarConteo(Map<String,Integer> cantidades,BigDecimal fondo){
+  if(cantidades==null)return;
+  Set<String> permitidas=Set.of("1000","500","200","100","50","20","10","5","2","1","0.50");
+  BigDecimal total=BigDecimal.ZERO;
+  for(var e:cantidades.entrySet()){
+   if(!permitidas.contains(e.getKey()) || e.getValue()==null || e.getValue()<0 || e.getValue()>1000000)throw fallo("Conteo por denominación inválido");
+   total=total.add(new BigDecimal(e.getKey()).multiply(BigDecimal.valueOf(e.getValue())));
+  }
+  if(total.compareTo(fondo)!=0)throw fallo("El fondo no coincide con las denominaciones");
+ }
  private ResponseStatusException fallo(String mensaje){return new ResponseStatusException(HttpStatus.CONFLICT,mensaje);}
 }

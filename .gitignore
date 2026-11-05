@@ -1,4 +1,5 @@
 .env
+respaldos/
 target/
 *.class
 *.log

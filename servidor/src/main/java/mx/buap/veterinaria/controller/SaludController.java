@@ -22,6 +22,6 @@ public class SaludController {
         Integer tablas = jdbc.queryForObject(
                 "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
                 Integer.class);
-        return Map.of("estado", "OK", "tablas", tablas, "hora", OffsetDateTime.now().toString());
+        return Map.of("estado", "OK", "versionApi", "estabilizacion-1", "tablas", tablas, "hora", OffsetDateTime.now().toString());
     }
 }

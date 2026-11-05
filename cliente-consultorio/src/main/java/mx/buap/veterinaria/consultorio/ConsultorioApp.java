@@ -33,7 +33,8 @@ public class ConsultorioApp extends Application {
     private final ListView<JsonNode> duenos = new ListView<>();
     private final ListView<JsonNode> mascotas = new ListView<>();
     private final ListView<JsonNode> historial = new ListView<>();
-    private final ListView<String> detalles = new ListView<>();
+    private final TableView<String> detalles = new TableView<>();
+    private final ComboBox<JsonNode> selectorProducto = new ComboBox<>();
     private final TextField buscar = new TextField();
     private final TextField motivo = new TextField();
     private final TextField peso = new TextField();
@@ -71,9 +72,9 @@ public class ConsultorioApp extends Application {
         ventanaPrincipal = ventana;
         Label marca = new Label("SISTEMA VETERINARIA"); marca.getStyleClass().add("brand");
         Label subtitulo = new Label("Atención médica  /  Consultorio"); subtitulo.getStyleClass().add("subtitle");
-        estado.getStyleClass().add("badge");
+        estado.getStyleClass().add("connection-status");
         Button inventario = new Button("Revisar inventario"); inventario.setOnAction(e -> revisarInventario());
-        Button salir = new Button("Cerrar sesión"); salir.setOnAction(e -> cerrarSesion());
+        Button salir = new Button("Cerrar sesión"); salir.getStyleClass().add("logout"); salir.setOnAction(e -> cerrarSesion());
         Region espacio = new Region(); HBox.setHgrow(espacio, Priority.ALWAYS);
         HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, salir);
         barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT); barra.getStyleClass().add("header");
@@ -119,9 +120,22 @@ public class ConsultorioApp extends Application {
         Button enviar = new Button("Enviar precuenta a caja"); enviar.getStyleClass().add("primary");
         enviar.setMaxWidth(Double.MAX_VALUE); enviar.setOnAction(e -> enviarPrecuenta(enviar));
         detalles.setPrefHeight(100); detalles.setMinHeight(80); historial.setMinHeight(100);
-        Button elegirInsumo=new Button("Buscar servicio o insumo"); elegirInsumo.setOnAction(e -> revisarInventario());
-        detalles.setCellFactory(v -> new ListCell<>() { @Override protected void updateItem(String item,boolean empty){super.updateItem(item,empty);if(empty||item==null){setText(null);return;}String[] partes=item.split(" x ");JsonNode p=catalogoPrecuenta.get(Integer.parseInt(partes[0]));setText(p==null?item:partes[1]+" × "+p.path("nombre").asText()+" · $"+p.path("precio").decimalValue().multiply(new BigDecimal(partes[1])));}});
-        VBox cuenta = panel("SERVICIOS E INSUMOS A COBRAR", elegirInsumo, grid(new String[]{"Producto / ID", "Cantidad"}, productoId, cantidad),
+        detalles.setId("detalle-precuenta");
+        TableColumn<String,String> unidadesCol=new TableColumn<>("Cant.");
+        unidadesCol.setCellValueFactory(c -> new SimpleStringProperty(c.getValue().split(" x ")[1]));
+        TableColumn<String,String> nombreCol=new TableColumn<>("Servicio / insumo");
+        nombreCol.setCellValueFactory(c -> {int id=Integer.parseInt(c.getValue().split(" x ")[0]);JsonNode p=catalogoPrecuenta.get(id);return new SimpleStringProperty(p==null?"Producto #"+id:p.path("nombre").asText());});
+        TableColumn<String,String> importeCol=new TableColumn<>("Importe");
+        importeCol.setCellValueFactory(c -> {String[] partes=c.getValue().split(" x ");JsonNode p=catalogoPrecuenta.get(Integer.parseInt(partes[0]));return new SimpleStringProperty(p==null?"—":"$"+p.path("precio").decimalValue().multiply(new BigDecimal(partes[1])).setScale(2,java.math.RoundingMode.HALF_UP));});
+        nombreCol.setPrefWidth(170);detalles.getColumns().addAll(unidadesCol,nombreCol,importeCol);
+        detalles.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        detalles.setPlaceholder(new Label("Seleccione un servicio o insumo y pulse Agregar."));
+        selectorProducto.setPromptText("Seleccione un servicio o insumo");selectorProducto.setMaxWidth(Double.MAX_VALUE);
+        selectorProducto.setCellFactory(v -> textoCelda(n -> n.path("nombre").asText()+" · $"+n.path("precio").asText()));
+        selectorProducto.setButtonCell(textoCelda(n -> n.path("nombre").asText()));
+        selectorProducto.valueProperty().addListener((o,a,b) -> {if(b!=null)productoId.setText(String.valueOf(id(b)));});
+
+        VBox cuenta = panel("SERVICIOS E INSUMOS A COBRAR", grid(new String[]{"Servicio / insumo", "Cantidad"}, selectorProducto, cantidad),
                 new HBox(8, agregar, quitar), detalles, enviar);
         cuenta.setMinHeight(Region.USE_PREF_SIZE);
         VBox izquierda = new VBox(14, panelDuenos, panelMascotas); izquierda.setPrefWidth(300);
@@ -134,7 +148,8 @@ public class ConsultorioApp extends Application {
         Scene escena = new Scene(raiz, 1360, 880); escena.getStylesheets().add(tema());
         ventana.setMinWidth(1120); ventana.setMinHeight(720);
         ventana.setTitle("Sistema Veterinaria · Consultorio"); ventana.setScene(escena); ventana.show();
-        api("GET", "/api/salud", null, n -> estado.setText("Servidor: conectado"), e -> estado.setText("Servidor: sin conexión"));
+        api("GET", "/api/salud", null, n -> {estado.setText("Servidor: conectado");estado.getStyleClass().add("connected");}, e -> {estado.setText("Servidor: sin conexión");estado.getStyleClass().add("disconnected");});
+        api("GET", "/api/productos", null, n -> {n.forEach(p -> {catalogoPrecuenta.put(id(p),p);selectorProducto.getItems().add(p);});detalles.refresh();}, this::error);
         buscarDuenos();
     }
 
@@ -281,7 +296,7 @@ public class ConsultorioApp extends Application {
         };
         buscarProducto.setOnAction(e -> consultar.run()); filtro.setOnAction(e -> consultar.run());
         Button usar = new Button("Usar en precuenta"); usar.disableProperty().bind(tabla.getSelectionModel().selectedItemProperty().isNull());
-        usar.setOnAction(e -> { JsonNode seleccionado=tabla.getSelectionModel().getSelectedItem(); catalogoPrecuenta.put(id(seleccionado),seleccionado); productoId.setText(String.valueOf(id(seleccionado))); dialogo.close(); });
+        usar.setOnAction(e -> { JsonNode seleccionado=tabla.getSelectionModel().getSelectedItem(); catalogoPrecuenta.put(id(seleccionado),seleccionado); productoId.setText(String.valueOf(id(seleccionado))); agregarDetalle(); dialogo.close(); });
         dialogo.getDialogPane().setContent(new VBox(12, new HBox(8,filtro,buscarProducto), tabla, resultado, usar));
         dialogo.getDialogPane().setPrefWidth(760); dialogo.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         dialogo.setOnShown(e -> consultar.run()); dialogo.showAndWait();
@@ -291,13 +306,13 @@ public class ConsultorioApp extends Application {
         try {
             int producto = Integer.parseInt(productoId.getText().trim());
             BigDecimal unidades = decimal(cantidad,"Cantidad",2,new BigDecimal("999999.99"));
-            if (producto <= 0 || unidades == null) throw new IllegalArgumentException("Indique un producto y una cantidad positiva.");
+            if (producto <= 0 || unidades == null || unidades.signum() <= 0) throw new IllegalArgumentException("Indique un producto y una cantidad positiva.");
             JsonNode item=catalogoPrecuenta.get(producto);
             if(item!=null && item.path("tipo").asText().equals("PRODUCTO")) {
                 BigDecimal acumulada=detalles.getItems().stream().filter(x -> x.startsWith(producto+" x ")).map(x -> new BigDecimal(x.split(" x ")[1])).reduce(unidades,BigDecimal::add);
                 if(acumulada.compareTo(item.path("stockActual").decimalValue())>0){error("La cantidad supera la existencia consultada.");return;}
             }
-            detalles.getItems().add(producto + " x " + unidades.toPlainString()); productoId.clear();
+            detalles.getItems().add(producto + " x " + unidades.toPlainString()); productoId.clear(); selectorProducto.getSelectionModel().clearSelection();
         } catch (IllegalArgumentException ex) { error("Indique un ID de producto válido y una cantidad positiva (máximo 2 decimales)."); }
     }
 
@@ -329,6 +344,7 @@ public class ConsultorioApp extends Application {
             if (cerrandoSesion) return;
             if (ex != null) { failure.accept("No se pudo conectar al servidor. Intente nuevamente."); return; }
             if (r.statusCode() < 200 || r.statusCode() >= 300) {
+                try { JsonNode err=json.readTree(r.body()); if(err.hasNonNull("message")){failure.accept(err.path("message").asText());return;} }catch(Exception ignored){}
                 failure.accept(r.statusCode() == 401 || r.statusCode() == 403 ? "Su sesión no permite esta operación. Cierre sesión e ingrese nuevamente." :
                         "No se pudo guardar o consultar la información (" + r.statusCode() + "). Revise los datos e intente nuevamente."); return;
             }

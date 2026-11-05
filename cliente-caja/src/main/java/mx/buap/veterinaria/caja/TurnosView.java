@@ -21,9 +21,9 @@ final class TurnosView {
     private final ObjectMapper json = new ObjectMapper();
     TurnosView(HttpClient http, Stage owner) { this.http=http; this.owner=owner; }
     HBox acciones() {
-        Button abrir=new Button("Abrir turno"), salida=new Button("Salida de efectivo"), corte=new Button("Corte ciego"), historial=new Button("Histórico de cortes");
-        abrir.setOnAction(e -> abrir()); salida.setOnAction(e -> salida()); corte.setOnAction(e -> corte()); historial.setOnAction(e -> historial());
-        HBox bar=new HBox(8,abrir,salida,corte,historial);bar.setPadding(new Insets(10,18,0,18));return bar;
+        Button abrir=new Button("Abrir turno"), salida=new Button("Salida de efectivo"), corte=new Button("Corte ciego");
+        abrir.setOnAction(e -> abrir()); salida.setOnAction(e -> salida()); corte.setOnAction(e -> corte());
+        HBox bar=new HBox(8,abrir,salida,corte);bar.setPadding(new Insets(10,18,0,18));return bar;
     }
     private Dialog<Void> ventana(String titulo) {
         Dialog<Void> d=new Dialog<>();d.initOwner(owner);d.setTitle(titulo);d.setHeaderText(titulo);d.setResizable(true);
@@ -31,9 +31,22 @@ final class TurnosView {
         d.getDialogPane().getButtonTypes().add(ButtonType.CANCEL);return d;
     }
     private void abrir() {
-        Dialog<Void> d=ventana("Apertura de turno");TextField fondo=new TextField("0.00");Label error=new Label();Button guardar=new Button("Abrir turno");
-        guardar.getStyleClass().add("primary");d.getDialogPane().setContent(new VBox(12,new Label("Fondo inicial de efectivo ($)"),fondo,error,guardar));
-        guardar.setOnAction(e -> {try {BigDecimal n=numero(fondo);enviar(d,guardar,error,"POST","/api/turnos",json.createObjectNode().put("fondoInicial",n),r -> d.close());}catch(Exception ex){error.setText(ex.getMessage());}});d.showAndWait();
+        Dialog<Void> d=ventana("Apertura de turno · Fondo inicial");
+        GridPane grid=new GridPane();grid.setHgap(18);grid.setVgap(8);
+        Map<String,TextField> campos=new LinkedHashMap<>();Label total=new Label("Fondo inicial: $0.00"),error=new Label();error.setWrapText(true);
+        int fila=0;
+        for(String denominacion:List.of("1000","500","200","100","50","20","10","5","2","1","0.50")) {
+            TextField piezas=new TextField("0");piezas.setPrefColumnCount(5);campos.put(denominacion,piezas);
+            grid.addRow(fila++,new Label("$"+denominacion),piezas);
+            piezas.textProperty().addListener((o,a,b) -> {try{total.setText("Fondo inicial: $"+contado(campos));}catch(Exception ex){total.setText("Revise las cantidades de piezas");}});
+        }
+        Button guardar=new Button("Confirmar fondo y abrir turno");guardar.getStyleClass().add("primary");
+        d.getDialogPane().setContent(new VBox(12,new Label("Capture la cantidad de billetes y monedas"),grid,total,error,guardar));
+        guardar.setOnAction(e -> {try {
+            ObjectNode body=json.createObjectNode().put("fondoInicial",contado(campos));
+            ObjectNode desglose=body.putObject("denominaciones");campos.forEach((k,v) -> desglose.put(k,Integer.parseInt(v.getText().trim())));
+            enviar(d,guardar,error,"POST","/api/turnos",body,r -> d.close());
+        }catch(Exception ex){error.setText("Use cantidades enteras no negativas de billetes y monedas.");}});d.showAndWait();
     }
     private void salida() {
         Dialog<Void> d=ventana("Salida de efectivo · Autorización administrativa");
@@ -75,13 +88,6 @@ final class TurnosView {
         BigDecimal n=new BigDecimal(campo.getText().trim().replace(',','.'));
         if(n.signum()<0 || n.scale()>2 || n.compareTo(new BigDecimal("99999999.99"))>0)throw new IllegalArgumentException("Use un importe positivo con máximo dos decimales.");return n;
     }
-    private void historial() {
-        Dialog<Void> d=ventana("Histórico de cortes");ListView<JsonNode> lista=new ListView<>();lista.setPrefSize(550,330);
-        lista.setCellFactory(v -> new ListCell<>(){@Override protected void updateItem(JsonNode n,boolean vacia){super.updateItem(n,vacia);setText(vacia||n==null?null:"Corte #"+n.path("id").asText()+" · "+n.path("cierre").asText());}});
-        Button ver=new Button("Ver reporte");Label error=new Label();d.getDialogPane().setContent(new VBox(12,lista,error,ver));
-        ver.setOnAction(e -> {JsonNode n=lista.getSelectionModel().getSelectedItem();if(n!=null)enviar(d,ver,error,"GET","/api/turnos/"+n.path("id").asInt()+"/reporte",null,this::reporte);});
-        d.setOnShown(e -> enviar(d,ver,error,"GET","/api/turnos/historial",null,r -> {lista.getItems().clear();r.forEach(lista.getItems()::add);}));d.showAndWait();
-    }
     private void reporte(JsonNode r) {
         Dialog<Void> d=ventana("Balance y auditoría · Corte #"+r.path("id").asText());
         StringBuilder s=new StringBuilder("VetCQS · REPORTE DE CORTE\n\n");
@@ -105,7 +111,7 @@ final class TurnosView {
         http.sendAsync(req,HttpResponse.BodyHandlers.ofString()).whenComplete((response,ex) -> Platform.runLater(() -> {
             boton.setDisable(false);dialogo.getDialogPane().lookupButton(ButtonType.CANCEL).setDisable(false);if(!dialogo.isShowing())return;
             if(ex!=null){error.setText("No se pudo conectar al servidor.");return;}
-            if(response.statusCode()<200 || response.statusCode()>=300){error.setText("Operación rechazada ("+response.statusCode()+"). Revise turno, importes y credenciales.");return;}
+            if(response.statusCode()<200 || response.statusCode()>=300){try {JsonNode err=json.readTree(response.body());error.setText(err.path("message").asText(err.path("error").asText("Operación rechazada ("+response.statusCode()+").")));}catch(Exception ignored){error.setText("Operación rechazada ("+response.statusCode()+").");}return;}
             try{success.accept(json.readTree(response.body()));}catch(Exception err){error.setText("No se pudo leer la respuesta.");}
         }));
     }

@@ -16,7 +16,8 @@ public class EmpleadoController {
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public Usuario crear(@Valid @RequestBody EmpleadoRequest r) {
         if (r.contrasena()==null || r.contrasena().length()<8) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"La contraseña debe tener 8 caracteres");
-        Usuario u=new Usuario(); u.setNombre(r.nombre()); u.setUsuario(r.usuario()); u.setRol(r.rol()); u.setActivo(true); u.setContrasenaHash(encoder.encode(r.contrasena())); return usuarios.save(u);
+        if (usuarios.findByUsuario(r.usuario().trim()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT,"El nombre de usuario ya existe. Elija otro.");
+        Usuario u=new Usuario(); u.setNombre(r.nombre()); u.setUsuario(r.usuario().trim()); u.setRol(r.rol()); u.setActivo(true); u.setContrasenaHash(encoder.encode(r.contrasena())); return usuarios.save(u);
     }
     @PutMapping("/{id}/desactivar")
     public Usuario desactivar(@PathVariable Integer id) { Usuario u=usuarios.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND)); u.setActivo(false); return usuarios.save(u); }
