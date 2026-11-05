@@ -35,7 +35,7 @@ public class SecurityConfig {
             .requestMatchers("/api/facturas/**").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .anyRequest().authenticated())
             .sessionManagement(session -> session
-                .sessionFixation(fixation -> fixation.changeSessionId())
+                .sessionFixation(fixation -> fixation.none()) // AuthController ya rota el id al iniciar sesión; rotarlo en cada petición rompía peticiones simultáneas
                 .maximumSessions(1));
         return http.build();
     }
