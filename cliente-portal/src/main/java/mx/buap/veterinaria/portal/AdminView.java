@@ -30,6 +30,8 @@ final class AdminView {
     private final TableView<JsonNode> products = new TableView<>();
     private final Label status = new Label();
     private final Label connection = new Label("Servidor: verificando...");
+    /** Iteración 3: aviso de productos en o por debajo del stock mínimo (RF-14). */
+    private final Label stockAlert = new Label();
 
     AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout) {
         this.logout = logout;
@@ -45,7 +47,7 @@ final class AdminView {
         cerrarSesion.setOnAction(e -> logout.run());
         configureEmployees();
         configureProducts();
-        Button refresh = new Button("Actualizar");
+        Button refresh = new Button("Actualizar · F5");
         refresh.setOnAction(e -> load());
         Button addEmployee = new Button("Nuevo personal");
         addEmployee.setOnAction(e -> employeeForm());
@@ -59,17 +61,24 @@ final class AdminView {
         deactivateProduct.setOnAction(e -> deactivateProduct());
         Button inventory = new Button("Registrar entrada");
         inventory.setOnAction(e -> inventoryForm());
+        Button adjust = new Button("Ajustar existencia");
+        adjust.setOnAction(e -> adjustmentForm());
+        Button kardex = new Button("Ver movimientos");
+        kardex.setOnAction(e -> showKardex());
+        stockAlert.getStyleClass().add("stock-alert");
+        stockAlert.setWrapText(true); stockAlert.setMaxWidth(Double.MAX_VALUE);
+        stockAlert.setVisible(false); stockAlert.setManaged(false);
 
         addEmployee.getStyleClass().add("primary");
         addProduct.getStyleClass().add("primary");
         deactivateEmployee.getStyleClass().add("danger");
         deactivateProduct.getStyleClass().add("danger");
         FlowPane employeeActions = new FlowPane(8, 8, addEmployee, deactivateEmployee);
-        FlowPane productActions = new FlowPane(8, 8, addProduct, editProduct, inventory, deactivateProduct);
+        FlowPane productActions = new FlowPane(8, 8, addProduct, editProduct, inventory, adjust, kardex, deactivateProduct);
         Label staffTitle = new Label("PERSONAL"); staffTitle.getStyleClass().add("section-title");
         Label productTitle = new Label("INVENTARIO / PRODUCTOS"); productTitle.getStyleClass().add("section-title");
         VBox left = new VBox(12, staffTitle, employeeActions, employees);
-        VBox right = new VBox(12, productTitle, productActions, products);
+        VBox right = new VBox(12, productTitle, productActions, stockAlert, products);
         left.getStyleClass().add("card"); right.getStyleClass().add("card");
         VBox.setVgrow(employees, Priority.ALWAYS); VBox.setVgrow(products, Priority.ALWAYS);
         employees.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -87,7 +96,11 @@ final class AdminView {
         root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));
         stage.setTitle("Sistema Veterinaria · Administración");
         stage.setMinWidth(820); stage.setMinHeight(600);
-        stage.setScene(PortalApp.scene(root, 1100, 700));
+        javafx.scene.Scene scene = PortalApp.scene(root, 1100, 700);
+        scene.setOnKeyPressed(e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.F5) { load(); e.consume(); }
+        });
+        stage.setScene(scene);
         stage.show();
         load();
     }
@@ -109,8 +122,22 @@ final class AdminView {
         addColumn(products, "Nombre", "nombre", 150);
         addColumn(products, "Tipo", "tipo", 100);
         addColumn(products, "Precio", "precio", 90);
-        addColumn(products, "Stock", "stockActual", 90);
+        addColumn(products, "Stock", "stockActual", 80);
+        addColumn(products, "Mínimo", "stockMinimo", 80);
         addColumn(products, "Activo", "activo", 70);
+        // Iteración 3: los productos en o bajo su mínimo se ven en rojo.
+        products.setRowFactory(table -> new TableRow<>() {
+            @Override protected void updateItem(JsonNode item, boolean empty) {
+                super.updateItem(item, empty);
+                getStyleClass().remove("stock-low");
+                if (!empty && item != null && isLowStock(item)) getStyleClass().add("stock-low");
+            }
+        });
+    }
+
+    static boolean isLowStock(JsonNode product) {
+        return "PRODUCTO".equals(product.path("tipo").asText()) && product.path("activo").asBoolean(true)
+                && product.path("stockActual").decimalValue().compareTo(product.path("stockMinimo").decimalValue()) <= 0;
     }
 
     private static void addColumn(TableView<JsonNode> table, String title, String key, int width) {
@@ -128,6 +155,27 @@ final class AdminView {
         }));
         request("GET", "/api/empleados", "").thenAccept(r -> Platform.runLater(() -> fill(employees, r)));
         request("GET", "/api/productos/catalogo", "").thenAccept(r -> Platform.runLater(() -> fill(products, r)));
+        request("GET", "/api/inventario/alertas", "").thenAccept(r -> Platform.runLater(() -> showStockAlerts(r)));
+    }
+
+    private void showStockAlerts(HttpResponse<String> response) {
+        int count = 0;
+        StringBuilder names = new StringBuilder();
+        try {
+            if (response.statusCode() == 200) {
+                for (JsonNode alert : json.readTree(response.body())) {
+                    if (count < 4) names.append(count == 0 ? "" : ", ").append(alert.path("nombre").asText());
+                    count++;
+                }
+            }
+        } catch (Exception ignored) { count = 0; }
+        boolean visible = count > 0;
+        stockAlert.setVisible(visible); stockAlert.setManaged(visible);
+        if (visible) {
+            stockAlert.setText("⚠  " + count + (count == 1 ? " producto llegó" : " productos llegaron")
+                    + " a su stock mínimo: " + names + (count > 4 ? " y " + (count - 4) + " más" : "")
+                    + ". Registre una entrada para reabastecer.");
+        }
     }
 
     private void fill(TableView<JsonNode> table, HttpResponse<String> response) {
@@ -182,6 +230,11 @@ final class AdminView {
         type.setValue(selected == null ? "PRODUCTO" : selected.path("tipo").asText());
         TextField price = new TextField(selected == null ? "" : selected.path("precio").asText());
         TextField stock = new TextField(selected == null ? "0" : selected.path("stockActual").asText());
+        if (selected != null) {
+            // Iteración 3: la existencia de un producto ya creado solo cambia con entradas o ajustes (queda en el kardex).
+            stock.setDisable(true);
+            stock.setTooltip(new Tooltip("Use Registrar entrada o Ajustar existencia"));
+        }
         TextField minimum = new TextField(selected == null ? "0" : selected.path("stockMinimo").asText());
         price.setPromptText("0.00");
         Dialog<String[]> dialog = form(selected == null ? "Nuevo producto" : "Editar producto", "Datos del producto o servicio",
@@ -242,6 +295,97 @@ final class AdminView {
                 status.setText("La cantidad debe ser numérica.");
             }
         });
+    }
+
+    private void adjustmentForm() {
+        JsonNode selected = products.getSelectionModel().getSelectedItem();
+        if (selected == null || !"PRODUCTO".equals(selected.path("tipo").asText())) {
+            status.setText("Seleccione un producto (los servicios no manejan existencias).");
+            return;
+        }
+        ComboBox<String> kind = new ComboBox<>(FXCollections.observableArrayList(
+                "Salida: merma o daño", "Salida: caducidad", "Corrección por conteo físico (+/-)"));
+        kind.setValue("Salida: merma o daño");
+        TextField quantity = new TextField(); quantity.setPromptText("Ej. 2  (en conteo físico use -2 para restar)");
+        TextField reason = new TextField(); reason.setPromptText("Detalle: lote, quién lo detectó, etc.");
+        Dialog<String[]> dialog = form("Ajuste de inventario", selected.path("nombre").asText()
+                        + "  ·  existencia actual: " + selected.path("stockActual").asText(),
+                new String[]{"Tipo de ajuste", "Cantidad", "Detalle"}, kind, quantity, reason);
+        dialog.showAndWait().ifPresent(fields -> {
+            if (fields.length != 3 || fields[2].isBlank()) {
+                status.setText("Capture cantidad y detalle del ajuste.");
+                return;
+            }
+            try {
+                BigDecimal amount = new BigDecimal(fields[1].trim());
+                // Merma y caducidad siempre restan; el conteo físico respeta el signo capturado.
+                if (!fields[0].startsWith("Corrección")) amount = amount.abs().negate();
+                if (amount.signum() == 0) {
+                    status.setText("La cantidad del ajuste no puede ser cero.");
+                    return;
+                }
+                ObjectNode body = json.createObjectNode();
+                body.put("cantidad", amount);
+                body.put("usuarioId", session.path("id").asInt());
+                body.put("motivo", fields[0].replace(" (+/-)", "") + " · " + fields[2].trim());
+                submit("POST", "/api/inventario/" + selected.path("id").asInt() + "/ajustes",
+                        body, "Ajuste registrado.");
+            } catch (RuntimeException e) {
+                status.setText("La cantidad debe ser numérica.");
+            }
+        });
+    }
+
+    /** Kardex: cada movimiento del producto con la existencia que dejó. */
+    private void showKardex() {
+        JsonNode selected = products.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            status.setText("Seleccione un producto.");
+            return;
+        }
+        request("GET", "/api/inventario/" + selected.path("id").asInt() + "/kardex", "")
+                .thenAccept(r -> Platform.runLater(() -> {
+                    if (r.statusCode() != 200) { showError(r); return; }
+                    try { kardexDialog(selected, json.readTree(r.body())); }
+                    catch (Exception e) { status.setText("Respuesta inválida del servidor."); }
+                }));
+    }
+
+    private void kardexDialog(JsonNode product, JsonNode rows) {
+        TableView<JsonNode> table = new TableView<>();
+        table.setPlaceholder(new Label("Este producto todavía no tiene movimientos."));
+        TableColumn<JsonNode, String> date = new TableColumn<>("Fecha");
+        date.setPrefWidth(130);
+        date.setCellValueFactory(d -> new javafx.beans.property.SimpleStringProperty(
+                d.getValue().path("fecha").asText().replace('T', ' ').replaceAll("\\.\\d+$", "")
+                        .replaceAll(":\\d\\d$", "")));
+        table.getColumns().add(date);
+        addColumn(table, "Tipo", "tipo", 95);
+        addColumn(table, "Cantidad", "cantidad", 80);
+        addColumn(table, "Existencia", "saldo", 85);
+        addColumn(table, "Motivo", "motivo", 230);
+        addColumn(table, "Referencia", "referencia", 110);
+        addColumn(table, "Usuario", "usuario", 120);
+        table.getColumns().get(2).getStyleClass().add("money-column");
+        table.getColumns().get(3).getStyleClass().addAll("money-column", "amount-column");
+        rows.forEach(table.getItems()::add);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setPrefHeight(380);
+        Label summary = new Label("Existencia actual: " + product.path("stockActual").asText()
+                + "   ·   Mínimo: " + product.path("stockMinimo").asText()
+                + "   ·   " + rows.size() + (rows.size() == 1 ? " movimiento" : " movimientos"));
+        summary.getStyleClass().add("muted");
+        VBox content = new VBox(10, summary, table);
+        content.setPadding(new Insets(16));
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.initOwner(stage);
+        dialog.setTitle("Movimientos de inventario");
+        dialog.setHeaderText(product.path("nombre").asText());
+        PortalApp.styleDialog(dialog);
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().setPrefWidth(900);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.showAndWait();
     }
 
     private Dialog<String[]> form(String title, String heading, String[] labels, Control... fields) {

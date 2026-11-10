@@ -146,7 +146,7 @@ public class CajaApp extends Application {
         cobrar.setMaxWidth(Double.MAX_VALUE);
         cobrar.getStyleClass().addAll("primary", "big");
         cobrar.setOnAction(e -> cobrar());
-        Button inventario = new Button("Revisar inventario");
+        Button inventario = new Button("Revisar inventario · F4");
         inventario.setMaxWidth(Double.MAX_VALUE);
         inventario.setOnAction(e -> revisarInventario());
         Label tituloTotal = new Label("RESUMEN DE VENTA · TOTAL A COBRAR");
@@ -163,7 +163,7 @@ public class CajaApp extends Application {
         VBox centro = new VBox(12, new HBox(8,precuentas,autorizar), new HBox(8,captura,agregarBtn), tabla, clienteVenta);
         VBox.setVgrow(tabla, Priority.ALWAYS);
         centro.setPadding(new Insets(18, 12, 12, 18));
-        Label atajos = new Label("ENTER  Buscar y agregar     F1  Cargar precuenta     F5  Cobrar     SUPR  Eliminar producto seleccionado");
+        Label atajos = new Label("F1  Precuenta     F2  Buscar producto     F4  Inventario     F5  Cobrar     ENTER  Agregar     SUPR  Quitar renglón");
         atajos.getStyleClass().add("shortcut-bar");
         atajos.setPadding(new Insets(8, 18, 12, 18));
 
@@ -176,6 +176,8 @@ public class CajaApp extends Application {
         escena.setOnKeyPressed(e -> {
             if(e.getCode()==KeyCode.F1){cargarPrecuenta();e.consume();}
             if(e.getCode()==KeyCode.F5){cobrar();e.consume();}
+            if(e.getCode()==KeyCode.F2){captura.requestFocus();captura.selectAll();e.consume();}
+            if(e.getCode()==KeyCode.F4){revisarInventario();e.consume();}
             if (e.getCode() == javafx.scene.input.KeyCode.DELETE && !(e.getTarget() instanceof javafx.scene.control.TextInputControl)) {
                 eliminarSeleccionado();
             }
@@ -581,7 +583,16 @@ public class CajaApp extends Application {
         TableColumn<InventarioFila, BigDecimal> existencia = new TableColumn<>("Existencia");
         existencia.setCellValueFactory(new PropertyValueFactory<>("existencia"));
         existencia.setCellFactory(columna -> celdaInventarioNumero());
+        existencia.getStyleClass().add("center-column");
         tablaInventario.getColumns().addAll(nombre, codigo, precio, existencia);
+        // Iteración 3: los productos en o bajo su stock mínimo se ven en rojo para avisar al cajero.
+        tablaInventario.setRowFactory(t -> new javafx.scene.control.TableRow<>() {
+            @Override protected void updateItem(InventarioFila fila, boolean vacia) {
+                super.updateItem(fila, vacia);
+                getStyleClass().remove("stock-low");
+                if (!vacia && fila != null && fila.isStockBajo()) getStyleClass().add("stock-low");
+            }
+        });
         tablaInventario.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         tablaInventario.getSelectionModel().setCellSelectionEnabled(true);
         tablaInventario.addEventHandler(KeyEvent.KEY_PRESSED, evento -> {
@@ -599,10 +610,15 @@ public class CajaApp extends Application {
                     producto.path("nombre").asText(),
                     producto.path("codigoBarras").isNull() ? "—" : producto.path("codigoBarras").asText(),
                     producto.path("precio").decimalValue(),
-                    producto.path("stockActual").decimalValue()));
+                    producto.path("stockActual").decimalValue(),
+                    "PRODUCTO".equals(producto.path("tipo").asText())
+                            && producto.path("stockActual").decimalValue()
+                                    .compareTo(producto.path("stockMinimo").decimalValue()) <= 0));
         }
+        long bajos = tablaInventario.getItems().stream().filter(InventarioFila::isStockBajo).count();
 
-        Label encabezado = new Label("INVENTARIO DISPONIBLE");
+        Label encabezado = new Label("INVENTARIO DISPONIBLE" + (bajos == 0 ? ""
+                : "   ·   " + bajos + (bajos == 1 ? " producto con existencia baja" : " productos con existencia baja")));
         encabezado.setStyle("-fx-background-color: #17324D; -fx-text-fill: white; "
                 + "-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 12px 14px;");
         VBox contenido = new VBox(12, encabezado, tablaInventario);
@@ -832,13 +848,17 @@ public class CajaApp extends Application {
         private final String codigo;
         private final BigDecimal precio;
         private final BigDecimal existencia;
+        private final boolean stockBajo;
 
-        InventarioFila(String nombre, String codigo, BigDecimal precio, BigDecimal existencia) {
+        InventarioFila(String nombre, String codigo, BigDecimal precio, BigDecimal existencia, boolean stockBajo) {
             this.nombre = nombre;
             this.codigo = codigo;
             this.precio = precio;
             this.existencia = existencia;
+            this.stockBajo = stockBajo;
         }
+
+        public boolean isStockBajo() { return stockBajo; }
 
         public String getNombre() { return nombre; }
         public String getCodigo() { return codigo; }

@@ -123,3 +123,24 @@
 
 /* Tooltips. */
 .tooltip { -fx-background-color: #1E2B38; -fx-text-fill: white; -fx-font-size: 12px; -fx-background-radius: 5px; }
+
+/* ---------- Iteración 3: control de stock ---------- */
+
+/* Aviso de productos en o por debajo del stock mínimo (RF-14). */
+.stock-alert {
+    -fx-background-color: #FDF1E3;
+    -fx-border-color: #E8B77A;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 14px;
+    -fx-text-fill: #8A4B0B;
+    -fx-font-weight: bold;
+}
+
+/* Renglón de un producto con existencia baja. */
+.table-row-cell.stock-low { -fx-background-color: #FCEBEA; }
+.table-row-cell.stock-low .table-cell { -fx-text-fill: #A3271C; }
+.table-row-cell.stock-low:selected { -fx-background-color: #F6CFCB; }
+
+/* Leyenda de atajos de teclado. */
+.shortcut-hint { -fx-text-fill: #6B7C8F; -fx-font-size: 12px; }

@@ -62,7 +62,10 @@ public class ProductoController {
     public Producto actualizar(@PathVariable Integer id, @Valid @RequestBody ProductoRequest request) {
         Producto producto = productos.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+        // Iteración 3: la existencia solo cambia con entradas, ventas o ajustes, para que todo quede en el kardex.
+        java.math.BigDecimal existencia = producto.getStockActual();
         copiar(request, producto);
+        producto.setStockActual(existencia);
         return productos.save(producto);
     }
 
