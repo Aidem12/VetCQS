@@ -18,4 +18,10 @@ public interface ProductoRepository extends JpaRepository<Producto, Integer> {
     Optional<Producto> findByIdForUpdate(Integer id);
 
     List<Producto> findTop20ByNombreContainingIgnoreCaseAndActivoTrueOrderByNombre(String texto);
+
+    /** RF-14: productos físicos activos en o por debajo de su stock mínimo, los más urgentes primero. */
+    @org.springframework.data.jpa.repository.Query("select p from Producto p where p.activo = true "
+            + "and p.tipo = 'PRODUCTO' and p.stockActual <= p.stockMinimo "
+            + "order by (p.stockMinimo - p.stockActual) desc, p.nombre")
+    List<Producto> findAlertasStock();
 }

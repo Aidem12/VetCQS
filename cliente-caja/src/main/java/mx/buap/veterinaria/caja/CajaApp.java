@@ -94,23 +94,20 @@ public class CajaApp extends Application {
         }
         ventanaPrincipal = ventana;
         Label marca = new Label("SISTEMA VETERINARIA");
-        marca.setStyle("-fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold;");
+        marca.getStyleClass().add("brand");
         Label encabezado = new Label("Punto de venta  /  Caja");
-        encabezado.setStyle("-fx-text-fill: #D7E5F5; -fx-font-size: 13px;");
+        encabezado.getStyleClass().add("subtitle");
         VBox identidad = new VBox(2, marca, encabezado);
-        estadoServidor.setStyle("-fx-background-color: #315B79; -fx-background-radius: 14px; "
-                + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;");
+        estadoServidor.getStyleClass().add("connection-status");
         Button cerrarSesion = new Button("Cerrar sesión"); cerrarSesion.getStyleClass().add("logout");
         cerrarSesion.setOnAction(e -> cerrarSesion());
         HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, cerrarSesion);
-        barraSuperior.setPadding(new Insets(14, 20, 14, 20));
-        barraSuperior.setStyle("-fx-background-color: #17324D;");
+        barraSuperior.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        barraSuperior.getStyleClass().add("header");
 
         TextField captura = new TextField();
         captura.setPromptText("Escanee o escriba código de barras o nombre");
-        captura.setStyle("-fx-font-size: 14px; -fx-padding: 11px 14px; "
-                + "-fx-background-color: white; -fx-border-color: #B8C7D6; "
-                + "-fx-border-radius: 6px; -fx-background-radius: 6px;");
+        captura.getStyleClass().add("search-field");
         captura.setOnAction(e -> buscar(captura));
 
         TableColumn<Renglon, BigDecimal> cantidad = new TableColumn<>("Cant.");
@@ -138,29 +135,26 @@ public class CajaApp extends Application {
         tabla.getColumns().addAll(cantidad, nombre, precio, importe);
         tabla.setEditable(true);
         tabla.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
-        tabla.setPlaceholder(new Label("Aun no hay productos en la venta"));
-        tabla.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8; "
-                + "-fx-border-radius: 6px; -fx-background-radius: 6px;");
+        tabla.setPlaceholder(new Label("Aún no hay productos en la venta. Escanee o busque uno para comenzar."));
+        precio.getStyleClass().add("money-column");
+        importe.getStyleClass().addAll("money-column", "amount-column");
+        cantidad.getStyleClass().add("center-column");
+        cantidad.setMaxWidth(110);
 
-        total.setStyle("-fx-font-size: 30px; -fx-font-weight: bold; -fx-text-fill: #21865B;");
-        Button cobrar = new Button("Cobrar");
+        total.getStyleClass().add("total-amount");
+        Button cobrar = new Button("Cobrar · F5");
         cobrar.setMaxWidth(Double.MAX_VALUE);
-        cobrar.setStyle("-fx-background-color: #21865B; -fx-text-fill: white; "
-                + "-fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 11px;");
+        cobrar.getStyleClass().addAll("primary", "big");
         cobrar.setOnAction(e -> cobrar());
-        Button inventario = new Button("Revisar inventario");
+        Button inventario = new Button("Revisar inventario · F4");
         inventario.setMaxWidth(Double.MAX_VALUE);
-        inventario.setStyle("-fx-background-color: #E8F0F7; -fx-text-fill: #17324D; "
-                + "-fx-font-weight: bold; -fx-padding: 9px;");
         inventario.setOnAction(e -> revisarInventario());
         Label tituloTotal = new Label("RESUMEN DE VENTA · TOTAL A COBRAR");
-        tituloTotal.setStyle("-fx-text-fill: #6B7C8F; -fx-font-size: 11px; -fx-font-weight: bold;");
-        resumenCarrito.setStyle("-fx-text-fill: #7A8A99; -fx-font-size: 12px;");
+        tituloTotal.getStyleClass().add("section-title");
+        resumenCarrito.getStyleClass().add("muted");
         VBox panelTotal = new VBox(12, tituloTotal, total, resumenCarrito, cobrar, inventario);
-        panelTotal.setPadding(new Insets(22));
-        panelTotal.setMinWidth(240);
-        panelTotal.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8; "
-                + "-fx-border-radius: 8px; -fx-background-radius: 8px;");
+        panelTotal.setMinWidth(260);
+        panelTotal.getStyleClass().addAll("card", "total-panel");
 
         Button precuentas = new Button("F1 · Cargar precuenta médica"); precuentas.setOnAction(e -> cargarPrecuenta());
         Button agregarBtn = new Button("Agregar · Enter"); agregarBtn.getStyleClass().add("primary");agregarBtn.setOnAction(e -> buscar(captura));
@@ -169,12 +163,11 @@ public class CajaApp extends Application {
         VBox centro = new VBox(12, new HBox(8,precuentas,autorizar), new HBox(8,captura,agregarBtn), tabla, clienteVenta);
         VBox.setVgrow(tabla, Priority.ALWAYS);
         centro.setPadding(new Insets(18, 12, 12, 18));
-        Label atajos = new Label("ENTER  Buscar y agregar     SUPR  Eliminar producto seleccionado");
-        atajos.setStyle("-fx-text-fill: #718294; -fx-font-size: 12px;");
+        Label atajos = new Label("F1  Precuenta     F2  Buscar producto     F4  Inventario     F5  Cobrar     ENTER  Agregar     SUPR  Quitar renglón");
+        atajos.getStyleClass().add("shortcut-bar");
         atajos.setPadding(new Insets(8, 18, 12, 18));
 
         BorderPane raiz = new BorderPane(centro, new VBox(barraSuperior, new TurnosView(http, ventana).acciones()), panelTotal, atajos, null);
-        raiz.setStyle("-fx-background-color: #F3F6F9;");
         Scene escena = new Scene(raiz, 1200, 760);
         escena.getStylesheets().add(getClass().getResource("/mx/buap/veterinaria/ui/veterinaria.css").toExternalForm());
         ventana.setMinWidth(1100);
@@ -183,6 +176,8 @@ public class CajaApp extends Application {
         escena.setOnKeyPressed(e -> {
             if(e.getCode()==KeyCode.F1){cargarPrecuenta();e.consume();}
             if(e.getCode()==KeyCode.F5){cobrar();e.consume();}
+            if(e.getCode()==KeyCode.F2){captura.requestFocus();captura.selectAll();e.consume();}
+            if(e.getCode()==KeyCode.F4){revisarInventario();e.consume();}
             if (e.getCode() == javafx.scene.input.KeyCode.DELETE && !(e.getTarget() instanceof javafx.scene.control.TextInputControl)) {
                 eliminarSeleccionado();
             }
@@ -588,7 +583,16 @@ public class CajaApp extends Application {
         TableColumn<InventarioFila, BigDecimal> existencia = new TableColumn<>("Existencia");
         existencia.setCellValueFactory(new PropertyValueFactory<>("existencia"));
         existencia.setCellFactory(columna -> celdaInventarioNumero());
+        existencia.getStyleClass().add("center-column");
         tablaInventario.getColumns().addAll(nombre, codigo, precio, existencia);
+        // Iteración 3: los productos en o bajo su stock mínimo se ven en rojo para avisar al cajero.
+        tablaInventario.setRowFactory(t -> new javafx.scene.control.TableRow<>() {
+            @Override protected void updateItem(InventarioFila fila, boolean vacia) {
+                super.updateItem(fila, vacia);
+                getStyleClass().remove("stock-low");
+                if (!vacia && fila != null && fila.isStockBajo()) getStyleClass().add("stock-low");
+            }
+        });
         tablaInventario.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
         tablaInventario.getSelectionModel().setCellSelectionEnabled(true);
         tablaInventario.addEventHandler(KeyEvent.KEY_PRESSED, evento -> {
@@ -606,10 +610,15 @@ public class CajaApp extends Application {
                     producto.path("nombre").asText(),
                     producto.path("codigoBarras").isNull() ? "—" : producto.path("codigoBarras").asText(),
                     producto.path("precio").decimalValue(),
-                    producto.path("stockActual").decimalValue()));
+                    producto.path("stockActual").decimalValue(),
+                    "PRODUCTO".equals(producto.path("tipo").asText())
+                            && producto.path("stockActual").decimalValue()
+                                    .compareTo(producto.path("stockMinimo").decimalValue()) <= 0));
         }
+        long bajos = tablaInventario.getItems().stream().filter(InventarioFila::isStockBajo).count();
 
-        Label encabezado = new Label("INVENTARIO DISPONIBLE");
+        Label encabezado = new Label("INVENTARIO DISPONIBLE" + (bajos == 0 ? ""
+                : "   ·   " + bajos + (bajos == 1 ? " producto con existencia baja" : " productos con existencia baja")));
         encabezado.setStyle("-fx-background-color: #17324D; -fx-text-fill: white; "
                 + "-fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 12px 14px;");
         VBox contenido = new VBox(12, encabezado, tablaInventario);
@@ -710,17 +719,14 @@ public class CajaApp extends Application {
                     estadoServidor.setText(servidorDisponible
                             ? "Servidor: conectado"
                             : "Modo local · datos de prueba");
-                    estadoServidor.setStyle(servidorDisponible
-                            ? "-fx-background-color: #21865B; -fx-background-radius: 14px; "
-                                    + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;"
-                            : "-fx-background-color: #A66A18; -fx-background-radius: 14px; "
-                                    + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;");
+                    estadoServidor.getStyleClass().removeAll("connected", "disconnected");
+                    estadoServidor.getStyleClass().add(servidorDisponible ? "connected" : "disconnected");
                 })).exceptionally(ex -> {
                     Platform.runLater(() -> {
                         servidorDisponible = false;
                         estadoServidor.setText("Modo local · datos de prueba");
-                        estadoServidor.setStyle("-fx-background-color: #A66A18; -fx-background-radius: 14px; "
-                                + "-fx-padding: 7px 12px; -fx-text-fill: white; -fx-font-size: 12px;");
+                        estadoServidor.getStyleClass().removeAll("connected", "disconnected");
+                        estadoServidor.getStyleClass().add("disconnected");
                     });
                     return null;
                 });
@@ -842,13 +848,17 @@ public class CajaApp extends Application {
         private final String codigo;
         private final BigDecimal precio;
         private final BigDecimal existencia;
+        private final boolean stockBajo;
 
-        InventarioFila(String nombre, String codigo, BigDecimal precio, BigDecimal existencia) {
+        InventarioFila(String nombre, String codigo, BigDecimal precio, BigDecimal existencia, boolean stockBajo) {
             this.nombre = nombre;
             this.codigo = codigo;
             this.precio = precio;
             this.existencia = existencia;
+            this.stockBajo = stockBajo;
         }
+
+        public boolean isStockBajo() { return stockBajo; }
 
         public String getNombre() { return nombre; }
         public String getCodigo() { return codigo; }

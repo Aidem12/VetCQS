@@ -44,7 +44,7 @@ public class ConsultorioApp extends Application {
     private final java.util.Map<Integer, JsonNode> catalogoPrecuenta = new java.util.HashMap<>();
     private final TextField productoId = new TextField();
     private final TextField cantidad = new TextField("1");
-    private final Button guardar = new Button("Guardar consulta");
+    private final Button guardar = new Button("Guardar consulta · Ctrl+S");
     private final Button nuevaMascota = new Button("Registrar mascota");
     private Stage ventanaPrincipal;
     private JsonNode duenoSeleccionado;
@@ -73,14 +73,14 @@ public class ConsultorioApp extends Application {
         Label marca = new Label("SISTEMA VETERINARIA"); marca.getStyleClass().add("brand");
         Label subtitulo = new Label("Atención médica  /  Consultorio"); subtitulo.getStyleClass().add("subtitle");
         estado.getStyleClass().add("connection-status");
-        Button inventario = new Button("Revisar inventario"); inventario.setOnAction(e -> revisarInventario());
+        Button inventario = new Button("Revisar inventario · F4"); inventario.setOnAction(e -> revisarInventario());
         Button salir = new Button("Cerrar sesión"); salir.getStyleClass().add("logout"); salir.setOnAction(e -> cerrarSesion());
         Region espacio = new Region(); HBox.setHgrow(espacio, Priority.ALWAYS);
         HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, salir);
         barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT); barra.getStyleClass().add("header");
 
         buscar.setId("buscar-dueno"); buscar.setPromptText("Nombre o teléfono"); buscar.setMinWidth(0);
-        Button buscarBtn = new Button("Buscar"); buscarBtn.setMinWidth(Region.USE_PREF_SIZE);
+        Button buscarBtn = new Button("Buscar · F2"); buscarBtn.setMinWidth(Region.USE_PREF_SIZE);
         buscarBtn.setOnAction(e -> buscarDuenos()); buscar.setOnAction(e -> buscarDuenos());
         HBox.setHgrow(buscar, Priority.ALWAYS);
         Button nuevoDueno = new Button("Registrar dueño"); nuevoDueno.setOnAction(e -> registrarDueno());
@@ -117,7 +117,7 @@ public class ConsultorioApp extends Application {
         productoId.setPromptText("ID de producto o servicio"); cantidad.setPrefColumnCount(4);
         Button agregar = new Button("Agregar"); agregar.setOnAction(e -> agregarDetalle());
         Button quitar = new Button("Quitar"); quitar.setOnAction(e -> detalles.getItems().remove(detalles.getSelectionModel().getSelectedItem()));
-        Button enviar = new Button("Enviar precuenta a caja"); enviar.getStyleClass().add("primary");
+        Button enviar = new Button("Enviar precuenta a caja · F10"); enviar.getStyleClass().add("primary");
         enviar.setMaxWidth(Double.MAX_VALUE); enviar.setOnAction(e -> enviarPrecuenta(enviar));
         detalles.setPrefHeight(100); detalles.setMinHeight(80); historial.setMinHeight(100);
         detalles.setId("detalle-precuenta");
@@ -143,9 +143,19 @@ public class ConsultorioApp extends Application {
         HBox cuerpo = new HBox(14, izquierda, consulta, derecha); cuerpo.setPadding(new Insets(18));
         for (Node n : new Node[]{izquierda, consulta, derecha}) HBox.setHgrow(n, Priority.ALWAYS);
         ScrollPane scroll = new ScrollPane(cuerpo); scroll.setFitToWidth(true); scroll.setFitToHeight(true);
-        BorderPane raiz = new BorderPane(scroll, barra, null, aviso, null);
-        BorderPane.setMargin(aviso, new Insets(0, 20, 12, 20));
+        Label atajos = new Label("F2  Buscar dueño     F4  Inventario     Ctrl+S  Guardar consulta     F10  Enviar precuenta a caja");
+        atajos.getStyleClass().add("shortcut-bar");
+        VBox pie = new VBox(4, aviso, atajos);
+        BorderPane raiz = new BorderPane(scroll, barra, null, pie, null);
+        BorderPane.setMargin(pie, new Insets(0, 20, 12, 20));
         Scene escena = new Scene(raiz, 1360, 880); escena.getStylesheets().add(tema());
+        // Diseño final (semana 6): atajos de teclado del consultorio.
+        escena.setOnKeyPressed(e -> {
+            if (e.getCode() == javafx.scene.input.KeyCode.F2) { buscar.requestFocus(); buscar.selectAll(); e.consume(); }
+            else if (e.getCode() == javafx.scene.input.KeyCode.F4) { revisarInventario(); e.consume(); }
+            else if (e.getCode() == javafx.scene.input.KeyCode.F10) { if (!enviar.isDisabled()) enviar.fire(); e.consume(); }
+            else if (e.isShortcutDown() && e.getCode() == javafx.scene.input.KeyCode.S) { if (!guardar.isDisabled()) guardar.fire(); e.consume(); }
+        });
         ventana.setMinWidth(1120); ventana.setMinHeight(720);
         ventana.setTitle("Sistema Veterinaria · Consultorio"); ventana.setScene(escena); ventana.show();
         api("GET", "/api/salud", null, n -> {estado.setText("Servidor: conectado");estado.getStyleClass().add("connected");}, e -> {estado.setText("Servidor: sin conexión");estado.getStyleClass().add("disconnected");});

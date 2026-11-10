@@ -99,3 +99,8 @@ autenticación se implementarán en las iteraciones posteriores.
 El módulo clínico y la precuenta están documentados en
 [`docs/ITERACION-2.md`](docs/ITERACION-2.md). El cliente de consultorio se ejecuta desde
 `cliente-consultorio` y se conecta al mismo servidor de la caja.
+
+## Iteración 3 (semana 6)
+
+Alertas de stock mínimo, ajustes de inventario, kardex por producto y atajos de teclado finales.
+Detalle, API nueva y pruebas en [`docs/ITERACION-3.md`](docs/ITERACION-3.md).

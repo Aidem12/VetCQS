@@ -151,7 +151,7 @@ public class FlujoClinicoTest {
     }); click(portalStage,"Iniciar sesión"); }
     static void waitLogin() throws Exception { waitFor(() -> fxUnchecked(() -> portalStage.isShowing() && portalStage.getTitle().contains("Portal") && hasButton(portalStage,"Iniciar sesión")) ); }
     static void click(Stage s,String text) throws Exception { Button b=fx(() -> button(s,text)); Platform.runLater(b::fire); Thread.sleep(100); }
-    static Button button(Stage s,String text){return s.getScene().getRoot().lookupAll(".button").stream().filter(n -> n instanceof Button b && b.getText().equals(text)).map(n -> (Button)n).findFirst().orElseThrow(() -> new AssertionError("Falta botón "+text));}
+    static Button button(Stage s,String text){return s.getScene().getRoot().lookupAll(".button").stream().filter(n -> n instanceof Button b && (b.getText().equals(text) || b.getText().startsWith(text + " · "))).map(n -> (Button)n).findFirst().orElseThrow(() -> new AssertionError("Falta botón "+text));}
     static boolean hasButton(Stage s,String text){try{button(s,text);return true;}catch(AssertionError e){return false;}}
     static boolean hasText(Stage s,String text){return s.getScene().getRoot().lookupAll(".label").stream().anyMatch(n -> ((Label)n).getText().contains(text));}
     static Control control(Stage s,String label){return (Control)s.getScene().getRoot().lookupAll(".label").stream().filter(n -> ((Label)n).getText().equals(label)).map(n -> ((Label)n).getLabelFor()).filter(Objects::nonNull).findFirst().orElseThrow();}

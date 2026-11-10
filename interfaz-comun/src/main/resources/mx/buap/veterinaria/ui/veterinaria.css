@@ -63,3 +63,84 @@
 .connection-status.connected { -fx-background-color: #21865B; }
 .connection-status.disconnected { -fx-background-color: #A66A18; }
 .button.logout { -fx-background-color: #E8F0F7; -fx-text-fill: #17324D; -fx-font-size: 13px; -fx-padding: 9px 14px; }
+
+/* ---------- Pulido visual (feature/clientes-diseno) ---------- */
+
+/* Encabezado con degradado sutil y sombra para separarlo del contenido. */
+.header {
+    -fx-background-color: linear-gradient(to right, #17324D, #1E4466);
+    -fx-effect: dropshadow(gaussian, rgba(23, 50, 77, 0.25), 8, 0, 0, 2);
+}
+.brand { -fx-font-size: 16px; }
+
+/* Indicador de conexión con mejor contraste. */
+.connection-status { -fx-font-weight: bold; -fx-background-radius: 20px; -fx-padding: 6px 14px; }
+.connection-status.disconnected { -fx-background-color: #B36A12; }
+.button.logout { -fx-background-color: rgba(255, 255, 255, 0.12); -fx-text-fill: white; -fx-border-color: rgba(255, 255, 255, 0.25); }
+.button.logout:hover { -fx-background-color: rgba(255, 255, 255, 0.22); }
+
+/* Tarjetas con bordes más suaves y una sombra ligera. */
+.card {
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-color: #DCE3EA;
+    -fx-effect: dropshadow(gaussian, rgba(23, 50, 77, 0.07), 12, 0, 0, 3);
+}
+
+/* Campos: foco más visible. */
+.text-field:focused, .text-area:focused, .combo-box:focused {
+    -fx-border-color: #2F7DC1;
+    -fx-border-width: 1.5px;
+}
+.search-field { -fx-font-size: 15px; -fx-padding: 11px 14px; }
+
+/* Botones: el principal destaca más; variante grande para Cobrar. */
+.button.primary { -fx-effect: dropshadow(gaussian, rgba(33, 134, 91, 0.30), 6, 0, 0, 2); }
+.button.big { -fx-font-size: 16px; -fx-padding: 14px 16px; }
+
+/* Tablas: renglones más altos, encabezado discreto, montos alineados. */
+.table-view .column-header-background,
+.table-view .column-header,
+.table-view .filler { -fx-background-color: #F4F7FA; }
+.table-view .column-header .label { -fx-text-fill: #6B7C8F; -fx-font-size: 11px; }
+.table-row-cell { -fx-cell-size: 40px; -fx-border-color: transparent transparent #EEF2F6 transparent; }
+.table-cell.money-column { -fx-alignment: CENTER_RIGHT; }
+.table-cell.amount-column { -fx-font-weight: bold; }
+.table-cell.center-column { -fx-alignment: CENTER; }
+.table-view:focused, .list-view:focused { -fx-border-color: #9CC0E2; }
+
+/* Caja: panel del total. */
+.total-panel { -fx-padding: 22px; }
+.total-amount { -fx-font-size: 36px; -fx-font-weight: bold; -fx-text-fill: #21865B; }
+.shortcut-bar { -fx-text-fill: #6B7C8F; -fx-font-size: 12px; -fx-font-family: "Consolas", "Segoe UI"; }
+
+/* Barras de desplazamiento delgadas. */
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .thumb { -fx-background-color: #C5D1DD; -fx-background-radius: 6px; }
+.scroll-bar .thumb:hover { -fx-background-color: #A9B8C7; }
+.scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-padding: 0; -fx-background-color: transparent; }
+.scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: " "; -fx-padding: 0; }
+
+/* Tooltips. */
+.tooltip { -fx-background-color: #1E2B38; -fx-text-fill: white; -fx-font-size: 12px; -fx-background-radius: 5px; }
+
+/* ---------- Iteración 3: control de stock ---------- */
+
+/* Aviso de productos en o por debajo del stock mínimo (RF-14). */
+.stock-alert {
+    -fx-background-color: #FDF1E3;
+    -fx-border-color: #E8B77A;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+    -fx-padding: 10px 14px;
+    -fx-text-fill: #8A4B0B;
+    -fx-font-weight: bold;
+}
+
+/* Renglón de un producto con existencia baja. */
+.table-row-cell.stock-low { -fx-background-color: #FCEBEA; }
+.table-row-cell.stock-low .table-cell { -fx-text-fill: #A3271C; }
+.table-row-cell.stock-low:selected { -fx-background-color: #F6CFCB; }
+
+/* Leyenda de atajos de teclado. */
+.shortcut-hint { -fx-text-fill: #6B7C8F; -fx-font-size: 12px; }
