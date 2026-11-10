@@ -205,9 +205,16 @@ final class AdminView {
         Dialog<String[]> dialog = form("Nuevo personal", "Datos del personal",
                 new String[]{"Nombre", "Usuario", "Contraseña", "Rol"}, name, user, password, role);
         dialog.showAndWait().ifPresent(fields -> {
-            if (fields.length != 4 || fields[0].isBlank() || fields[1].isBlank() || fields[2].length() < 8
-                    || !isRole(fields[3])) {
-                status.setText("Datos inválidos. Rol: ADMINISTRADOR, CAJERO o VETERINARIO.");
+            if (fields.length != 4 || fields[0].isBlank() || fields[1].isBlank()) {
+                warn("Capture el nombre y el usuario.");
+                return;
+            }
+            if (fields[2].length() < 8) {
+                warn("La contraseña debe tener al menos 8 caracteres.");
+                return;
+            }
+            if (!isRole(fields[3])) {
+                warn("Elija un rol: ADMINISTRADOR, CAJERO o VETERINARIO.");
                 return;
             }
             ObjectNode body = json.createObjectNode();
@@ -245,7 +252,7 @@ final class AdminView {
         dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 6 || fields[0].isBlank() || !fields[1].equalsIgnoreCase("PRODUCTO")
                     && !fields[1].equalsIgnoreCase("SERVICIO")) {
-                status.setText("Datos de producto inválidos.");
+                warn("Datos de producto inválidos.");
                 return;
             }
             try {
@@ -260,7 +267,7 @@ final class AdminView {
                 String path = selected == null ? "/api/productos" : "/api/productos/" + selected.path("id").asInt();
                 submit(selected == null ? "POST" : "PUT", path, body, "Producto guardado.");
             } catch (RuntimeException e) {
-                status.setText("Precio y existencias deben ser numéricos.");
+                warn("Precio y existencias deben ser numéricos.");
             }
         });
     }
@@ -275,7 +282,7 @@ final class AdminView {
     private void inventoryForm() {
         JsonNode selected = products.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            status.setText("Seleccione un producto.");
+            warn("Seleccione un producto.");
             return;
         }
         TextField quantity = new TextField(); quantity.setPromptText("Cantidad positiva");
@@ -284,7 +291,7 @@ final class AdminView {
                 new String[]{"Cantidad", "Motivo"}, quantity, reason);
         dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 2 || fields[1].isBlank()) {
-                status.setText("Capture cantidad y motivo.");
+                warn("Capture cantidad y motivo.");
                 return;
             }
             try {
@@ -295,7 +302,7 @@ final class AdminView {
                 submit("POST", "/api/inventario/" + selected.path("id").asInt() + "/entradas",
                         body, "Entrada registrada.");
             } catch (RuntimeException e) {
-                status.setText("La cantidad debe ser numérica.");
+                warn("La cantidad debe ser numérica.");
             }
         });
     }
@@ -303,7 +310,7 @@ final class AdminView {
     private void adjustmentForm() {
         JsonNode selected = products.getSelectionModel().getSelectedItem();
         if (selected == null || !"PRODUCTO".equals(selected.path("tipo").asText())) {
-            status.setText("Seleccione un producto (los servicios no manejan existencias).");
+            warn("Seleccione un producto (los servicios no manejan existencias).");
             return;
         }
         ComboBox<String> kind = new ComboBox<>(FXCollections.observableArrayList(
@@ -316,7 +323,7 @@ final class AdminView {
                 new String[]{"Tipo de ajuste", "Cantidad", "Detalle"}, kind, quantity, reason);
         dialog.showAndWait().ifPresent(fields -> {
             if (fields.length != 3 || fields[2].isBlank()) {
-                status.setText("Capture cantidad y detalle del ajuste.");
+                warn("Capture cantidad y detalle del ajuste.");
                 return;
             }
             try {
@@ -324,7 +331,7 @@ final class AdminView {
                 // Merma y caducidad siempre restan; el conteo físico respeta el signo capturado.
                 if (!fields[0].startsWith("Corrección")) amount = amount.abs().negate();
                 if (amount.signum() == 0) {
-                    status.setText("La cantidad del ajuste no puede ser cero.");
+                    warn("La cantidad del ajuste no puede ser cero.");
                     return;
                 }
                 ObjectNode body = json.createObjectNode();
@@ -334,7 +341,7 @@ final class AdminView {
                 submit("POST", "/api/inventario/" + selected.path("id").asInt() + "/ajustes",
                         body, "Ajuste registrado.");
             } catch (RuntimeException e) {
-                status.setText("La cantidad debe ser numérica.");
+                warn("La cantidad debe ser numérica.");
             }
         });
     }
@@ -343,14 +350,14 @@ final class AdminView {
     private void showKardex() {
         JsonNode selected = products.getSelectionModel().getSelectedItem();
         if (selected == null) {
-            status.setText("Seleccione un producto.");
+            warn("Seleccione un producto.");
             return;
         }
         request("GET", "/api/inventario/" + selected.path("id").asInt() + "/kardex", "")
                 .thenAccept(r -> Platform.runLater(() -> {
                     if (r.statusCode() != 200) { showError(r); return; }
                     try { kardexDialog(selected, json.readTree(r.body())); }
-                    catch (Exception e) { status.setText("Respuesta inválida del servidor."); }
+                    catch (Exception e) { warn("Respuesta inválida del servidor."); }
                 }));
     }
 
@@ -427,12 +434,37 @@ final class AdminView {
                 status.setText(success);
                 load();
             } else showError(response);
-        }));
+        })).exceptionally(e -> {
+            Platform.runLater(() -> warn("No se pudo conectar con el servidor. Revise que esté encendido."));
+            return null;
+        });
     }
 
     private void showError(HttpResponse<String> response) {
-        try { JsonNode error = json.readTree(response.body()); status.setText(error.path("message").asText(error.path("error").asText("Operación rechazada (" + response.statusCode() + ")."))); }
-        catch (Exception e) { status.setText("No se pudo completar la operación (" + response.statusCode() + ")."); }
+        String message;
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            message = "El servidor rechazó la operación porque la sesión ya no es válida o no tiene permiso ("
+                    + response.statusCode() + "). Cierre sesión y vuelva a entrar.";
+        } else {
+            message = "No se pudo completar la operación (" + response.statusCode() + ").";
+            try {
+                JsonNode error = json.readTree(response.body());
+                String detail = error.path("message").asText("");
+                if (detail.isBlank()) detail = error.path("detail").asText("");
+                if (!detail.isBlank()) message = detail;
+            } catch (Exception ignored) { /* se queda el mensaje con el código */ }
+        }
+        warn(message);
+    }
+
+    /** Muestra el problema abajo y en una ventana, para que no pase desapercibido. */
+    private void warn(String message) {
+        status.setText(message);
+        Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
+        alert.initOwner(stage);
+        alert.setHeaderText("No se guardó");
+        PortalApp.styleDialog(alert);
+        alert.showAndWait();
     }
 
     private static boolean isRole(String role) {
