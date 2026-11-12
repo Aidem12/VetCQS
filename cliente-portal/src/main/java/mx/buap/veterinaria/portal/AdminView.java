@@ -221,7 +221,10 @@ final class AdminView {
                 productRows.clear(); rows.forEach(productRows::add);
                 applyProductFilter();
             } else {
-                table.getItems().clear(); rows.forEach(table.getItems()::add);
+                java.util.List<JsonNode> ordered = new java.util.ArrayList<>();
+                rows.forEach(ordered::add);
+                ordered.sort(java.util.Comparator.comparingInt(n -> n.path("id").asInt()));
+                table.getItems().setAll(ordered);
             }
             status.setText("Datos actualizados.");
         } catch (Exception e) {
@@ -562,6 +565,8 @@ final class AdminView {
         status.setText(message);
         Alert alert = new Alert(Alert.AlertType.WARNING, message, ButtonType.OK);
         alert.initOwner(stage);
+        alert.getDialogPane().setPrefWidth(480);
+        alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
         alert.setHeaderText("No se guardó");
         PortalApp.styleDialog(alert);
         alert.showAndWait();
@@ -575,6 +580,8 @@ final class AdminView {
     private boolean confirm(String message) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.OK, ButtonType.CANCEL);
         alert.initOwner(stage);
+        alert.getDialogPane().setPrefWidth(480);
+        alert.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
         PortalApp.styleDialog(alert);
         return alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK;
     }
