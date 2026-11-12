@@ -35,6 +35,17 @@ Rama: `feature/semana6-stock-cortes`, hecha sobre `test/estabilizacion` con el d
 
 Los botones muestran su atajo (por ejemplo, `Cobrar · F5`) y cada pantalla tiene una barra con la lista.
 
+### Administración de personal y catálogo
+
+- **Eliminar usuario / Eliminar producto.** Borra de verdad solo si no tiene historial (ventas, consultas,
+  turnos, movimientos). Si lo tiene, responde 409 y pide usar Desactivar, para no romper reportes ni cortes.
+- **Reactivar** personal y productos desactivados.
+- **Cambiar contraseña** del personal (mínimo 8 caracteres). Un usuario sin contraseña no se puede reactivar.
+- Nadie puede eliminar ni desactivar su propio usuario, y siempre queda al menos un administrador activo.
+- Buscador por nombre o código en la tabla de productos.
+- Los errores de Administración se muestran en una ventana, no solo en la barra inferior.
+- `iniciar-vetcqs.bat`: doble clic para abrir Docker, levantar el servidor y abrir el portal (Windows).
+
 ## API nueva
 
 | Método | Ruta | Rol | Uso |
@@ -42,6 +53,11 @@ Los botones muestran su atajo (por ejemplo, `Cobrar · F5`) y cada pantalla tien
 | GET | `/api/inventario/alertas` | Administrador | Productos en o bajo el stock mínimo |
 | POST | `/api/inventario/{id}/ajustes` | Administrador | Ajuste con signo; cuerpo `{cantidad, usuarioId, motivo}` |
 | GET | `/api/inventario/{id}/kardex` | Administrador | Movimientos con existencia resultante |
+| PUT | `/api/empleados/{id}/activar` | Administrador | Reactivar personal (requiere contraseña) |
+| PUT | `/api/empleados/{id}/contrasena` | Administrador | Asignar contraseña; cuerpo `{contrasena}` |
+| DELETE | `/api/empleados/{id}` | Administrador | Eliminar personal sin historial |
+| PUT | `/api/productos/{id}/activar` | Administrador | Reactivar producto |
+| DELETE | `/api/productos/{id}/definitivo` | Administrador | Eliminar producto sin historial |
 
 No hay cambios en la base de datos: se usan la columna `stock_minimo` y el tipo `AJUSTE`
 que ya existían en `01_modelo_datos.sql`.
@@ -50,6 +66,8 @@ que ya existían en `01_modelo_datos.sql`.
 
 - `servidor/src/test/java/mx/buap/veterinaria/InventarioIteracion3Test.java`: ajuste que resta,
   rechazo de existencia negativa, rechazo de cero y de servicios, cálculo del faltante y saldos del kardex.
+- `servidor/src/test/java/mx/buap/veterinaria/EmpleadoAdministracionTest.java`: no borrar el propio usuario,
+  conservar un administrador activo, pedir Desactivar cuando hay historial y reactivar solo con contraseña.
 - `herramientas/pruebas-ui/FlujoClinicoTest.java`: ahora encuentra los botones aunque muestren su atajo.
 
 Ejecutar: `mvn -f servidor/pom.xml test`.

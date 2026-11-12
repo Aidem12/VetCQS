@@ -33,6 +33,9 @@ final class AdminView {
     private final Label connection = new Label("Servidor: verificando...");
     /** Iteración 3: aviso de productos en o por debajo del stock mínimo (RF-14). */
     private final Label stockAlert = new Label();
+    /** Todas las filas del catálogo; la tabla muestra solo las que coinciden con el buscador. */
+    private final java.util.List<JsonNode> productRows = new java.util.ArrayList<>();
+    private final TextField productSearch = new TextField();
 
     AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout, Runnable volver) {
         this.volver = volver;
@@ -56,6 +59,18 @@ final class AdminView {
         addEmployee.setOnAction(e -> employeeForm());
         Button deactivateEmployee = new Button("Desactivar seleccionado");
         deactivateEmployee.setOnAction(e -> deactivateEmployee());
+        Button activateEmployee = new Button("Reactivar");
+        activateEmployee.setOnAction(e -> activateEmployee());
+        Button passwordEmployee = new Button("Cambiar contraseña");
+        passwordEmployee.setOnAction(e -> passwordForm());
+        Button deleteEmployee = new Button("Eliminar usuario");
+        deleteEmployee.setOnAction(e -> deleteEmployee());
+        Button activateProduct = new Button("Reactivar producto");
+        activateProduct.setOnAction(e -> activateProduct());
+        Button deleteProduct = new Button("Eliminar producto");
+        deleteProduct.setOnAction(e -> deleteProduct());
+        productSearch.setPromptText("Buscar producto por nombre o código");
+        productSearch.textProperty().addListener((obs, before, now) -> applyProductFilter());
         Button addProduct = new Button("Nuevo producto");
         addProduct.setOnAction(e -> productForm(null));
         Button editProduct = new Button("Editar seleccionado");
@@ -76,12 +91,16 @@ final class AdminView {
         addProduct.getStyleClass().add("primary");
         deactivateEmployee.getStyleClass().add("danger");
         deactivateProduct.getStyleClass().add("danger");
-        FlowPane employeeActions = new FlowPane(8, 8, addEmployee, deactivateEmployee);
-        FlowPane productActions = new FlowPane(8, 8, addProduct, editProduct, inventory, adjust, kardex, deactivateProduct);
+        deleteEmployee.getStyleClass().add("danger");
+        deleteProduct.getStyleClass().add("danger");
+        FlowPane employeeActions = new FlowPane(8, 8, addEmployee, passwordEmployee, activateEmployee,
+                deactivateEmployee, deleteEmployee);
+        FlowPane productActions = new FlowPane(8, 8, addProduct, editProduct, inventory, adjust, kardex,
+                activateProduct, deactivateProduct, deleteProduct);
         Label staffTitle = new Label("PERSONAL"); staffTitle.getStyleClass().add("section-title");
         Label productTitle = new Label("INVENTARIO / PRODUCTOS"); productTitle.getStyleClass().add("section-title");
         VBox left = new VBox(12, staffTitle, employeeActions, employees);
-        VBox right = new VBox(12, productTitle, productActions, stockAlert, products);
+        VBox right = new VBox(12, productTitle, productActions, stockAlert, productSearch, products);
         left.getStyleClass().add("card"); right.getStyleClass().add("card");
         VBox.setVgrow(employees, Priority.ALWAYS); VBox.setVgrow(products, Priority.ALWAYS);
         employees.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -181,15 +200,29 @@ final class AdminView {
         }
     }
 
+    private void applyProductFilter() {
+        String text = productSearch.getText() == null ? "" : productSearch.getText().trim().toLowerCase();
+        products.getItems().setAll(productRows.stream()
+                .filter(p -> text.isEmpty()
+                        || p.path("nombre").asText().toLowerCase().contains(text)
+                        || p.path("codigoBarras").asText().toLowerCase().contains(text))
+                .toList());
+    }
+
     private void fill(TableView<JsonNode> table, HttpResponse<String> response) {
         if (response.statusCode() != 200) {
-            showError(response);
+            status.setText(errorMessage(response));
             return;
         }
         try {
             JsonNode rows = json.readTree(response.body());
             if (!rows.isArray()) throw new IllegalArgumentException("Se esperaba una lista");
-            table.getItems().clear(); rows.forEach(table.getItems()::add);
+            if (table == products) {
+                productRows.clear(); rows.forEach(productRows::add);
+                applyProductFilter();
+            } else {
+                table.getItems().clear(); rows.forEach(table.getItems()::add);
+            }
             status.setText("Datos actualizados.");
         } catch (Exception e) {
             status.setText("Respuesta inválida del servidor.");
@@ -224,6 +257,69 @@ final class AdminView {
             body.put("rol", fields[3].trim().toUpperCase());
             submit("POST", "/api/empleados", body, "Personal creado.");
         });
+    }
+
+    private JsonNode selectedEmployee() {
+        JsonNode selected = employees.getSelectionModel().getSelectedItem();
+        if (selected == null) warn("Seleccione una persona de la tabla.");
+        return selected;
+    }
+
+    private void activateEmployee() {
+        JsonNode selected = selectedEmployee();
+        if (selected == null) return;
+        submit("PUT", "/api/empleados/" + selected.path("id").asInt() + "/activar",
+                json.createObjectNode(), selected.path("nombre").asText() + " fue reactivado.");
+    }
+
+    private void passwordForm() {
+        JsonNode selected = selectedEmployee();
+        if (selected == null) return;
+        PasswordField password = new PasswordField(); password.setPromptText("Mínimo 8 caracteres");
+        PasswordField repeat = new PasswordField(); repeat.setPromptText("Repita la contraseña");
+        Dialog<String[]> dialog = form("Cambiar contraseña", selected.path("nombre").asText()
+                + "  ·  usuario " + selected.path("usuario").asText(),
+                new String[]{"Nueva contraseña", "Confirmar"}, password, repeat);
+        dialog.showAndWait().ifPresent(fields -> {
+            if (fields[0].length() < 8) { warn("La contraseña debe tener al menos 8 caracteres."); return; }
+            if (!fields[0].equals(fields[1])) { warn("Las contraseñas no coinciden."); return; }
+            ObjectNode body = json.createObjectNode();
+            body.put("contrasena", fields[0]);
+            submit("PUT", "/api/empleados/" + selected.path("id").asInt() + "/contrasena", body,
+                    "Contraseña actualizada para " + selected.path("nombre").asText()
+                            + (selected.path("activo").asBoolean() ? "." : ". Ahora puede reactivarlo."));
+        });
+    }
+
+    private void deleteEmployee() {
+        JsonNode selected = selectedEmployee();
+        if (selected == null || !confirm("¿Eliminar a " + selected.path("nombre").asText() + "?\n\n"
+                + "Solo se puede borrar si no tiene ventas, consultas ni turnos. Esta acción no se puede deshacer.")) return;
+        request("DELETE", "/api/empleados/" + selected.path("id").asInt(), "")
+                .thenAccept(r -> Platform.runLater(() -> afterDelete(r, selected.path("nombre").asText() + " fue eliminado.")));
+    }
+
+    private void activateProduct() {
+        JsonNode selected = products.getSelectionModel().getSelectedItem();
+        if (selected == null) { warn("Seleccione un producto."); return; }
+        submit("PUT", "/api/productos/" + selected.path("id").asInt() + "/activar",
+                json.createObjectNode(), selected.path("nombre").asText() + " fue reactivado.");
+    }
+
+    private void deleteProduct() {
+        JsonNode selected = products.getSelectionModel().getSelectedItem();
+        if (selected == null) { warn("Seleccione un producto."); return; }
+        if (!confirm("¿Eliminar " + selected.path("nombre").asText() + " del catálogo?\n\n"
+                + "Solo se puede borrar si nunca se ha vendido ni movido en inventario. Esta acción no se puede deshacer.")) return;
+        request("DELETE", "/api/productos/" + selected.path("id").asInt() + "/definitivo", "")
+                .thenAccept(r -> Platform.runLater(() -> afterDelete(r, selected.path("nombre").asText() + " fue eliminado.")));
+    }
+
+    private void afterDelete(HttpResponse<String> response, String success) {
+        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+            status.setText(success);
+            load();
+        } else showError(response);
     }
 
     private void deactivateEmployee() {
@@ -441,6 +537,10 @@ final class AdminView {
     }
 
     private void showError(HttpResponse<String> response) {
+        warn(errorMessage(response));
+    }
+
+    private String errorMessage(HttpResponse<String> response) {
         String message;
         if (response.statusCode() == 401 || response.statusCode() == 403) {
             message = "El servidor rechazó la operación porque la sesión ya no es válida o no tiene permiso ("
@@ -454,7 +554,7 @@ final class AdminView {
                 if (!detail.isBlank()) message = detail;
             } catch (Exception ignored) { /* se queda el mensaje con el código */ }
         }
-        warn(message);
+        return message;
     }
 
     /** Muestra el problema abajo y en una ventana, para que no pase desapercibido. */
