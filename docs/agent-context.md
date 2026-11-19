@@ -41,3 +41,25 @@
 - Esperar autorización del usuario para iniciar Fases2–6; no commits/push sin autorización.
 
 - Cierre: contenedor temporal vetcqs-phase1-test eliminado tras verificar su etiqueta, junto con su credencial temporal cifrada. vet-bd y vet-servidor continúan activos. Para repetir integración, crear una nueva base independiente y proporcionar credenciales de test; el runner no debe usar .env.
+
+## Avance implementación integral (rama local feature/integral, 2026-11-18)
+Base: origin/test/estabilizacion 25c9a57 + commits locales (sin push). Punto de guardado: ver `git log feature/integral`.
+### Hecho y probado (67 pruebas en verde, incluida IntegralPostgresTest y FlujoPostgresTest con PostgreSQL independiente)
+- Flyway (baseline 1, V2..V6 aditivas): agenda, expediente, farmacia/lotes, devoluciones, bitácora (usuario_texto, ip), aviso_caja.
+- Agenda (servidor + ventana Consultorio F3 día/semana/mes + configuración en Administración): traslapes por EXCLUDE gist, reserva concurrente (1 gana, 5 reciben 409).
+- Expediente (servidor + ventana Consultorio): vacunas, preventivos, antecedentes/alertas, notas, recetas PDF, estudios, adjuntos PDF/PNG/JPEG ≤5 MB (415 si no), historial PDF; anulación con motivo, sin borrado.
+- Farmacia (servidor + pestaña Administración): proveedores, compras con lote, FEFO, bloqueo de caducados, ajustes por lote, caducidades, reposición, márgenes.
+- Devoluciones (servidor + Caja F6): autorización admin, prorrateo de descuento, reingreso a lote, resta del efectivo esperado del corte.
+- Indicadores (servidor + pestaña Administración): consultas agregadas, conciliado con venta/pago/devolucion; PDF y Excel con folio/filtros/responsable.
+- Seguridad: CSRF (cookie XSRF-TOKEN + cabecera X-XSRF-TOKEN en todos los clientes; login exento), 401 sin sesión / 403 sin permiso, límite 5 fallos/15 min → bloqueo 5 min (login y autorizaciones), una sesión por usuario (SesionesActivas), WebSocket se cierra al terminar la sesión, cabeceras (CSP, nosniff, frame deny, no-referrer), auditoría de accesos (/api/auditoria + pestaña Bitácora), sesión del portal pasa a hijos por variable de entorno VETCQS_SESION.
+- Avisos en tiempo real: precuenta → aviso_caja persistido → WebSocket tras commit; Caja con reconexión y recuperación por /api/ventas/avisos.
+- Facturación: interfaz ServicioTimbrado + TimbradoDemostracion; aviso "no es CFDI timbrado por el SAT"; auditada.
+- Zona horaria del proceso fijada a America/Mexico_City (comun/ZonaHoraria).
+- Respaldo/restauración: herramientas/respaldar-bd.ps1 y restaurar-bd.ps1; pg_dump/pg_restore verificados en bases temporales del contenedor de pruebas (conteos iguales).
+### Pendiente
+- docs/verificacion-integral.md (matriz 1-160), docs de operación Windows y diagramas, informe final.
+- Cobertura JaCoCo (perfil cobertura) en ejecución; anotar el número real.
+- Recorrido JavaFX contra backend real: no ejecutado (requiere autorización para actualizar el servidor Docker real o un servidor aparte).
+- Distribución de clientes sin Maven (jpackage): no implementado.
+### Cómo continuar
+Compilación en la PC del usuario: `_build/ayudante-compilacion.bat` vigila `_build/pedido.sh` y ejecuta en contenedor maven con red del contenedor vetcqs-pg-pruebas (nunca la BD real). `_build` está fuera de Git.
