@@ -34,6 +34,10 @@ public class SecurityConfig {
             .requestMatchers(HttpMethod.POST, "/api/ventas/precuentas").hasAnyRole("ADMINISTRADOR", "VETERINARIO", "CAJERO")
             .requestMatchers("/api/ventas/**", "/api/turnos/**", "/ws/caja").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .requestMatchers("/api/clinica/**").hasAnyRole("ADMINISTRADOR", "VETERINARIO")
+            .requestMatchers("/api/agenda/**").hasAnyRole("ADMINISTRADOR", "VETERINARIO")
+            .requestMatchers(HttpMethod.GET, "/api/farmacia/lotes/vigentes").hasAnyRole("ADMINISTRADOR", "CAJERO", "VETERINARIO")
+            .requestMatchers("/api/farmacia/**", "/api/reportes/**", "/api/auditoria/**").hasRole("ADMINISTRADOR")
+            .requestMatchers(HttpMethod.GET, "/api/config/negocio").authenticated()
             .requestMatchers("/api/facturas/**").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .anyRequest().authenticated())
             .sessionManagement(session -> session
