@@ -31,9 +31,36 @@ class ClinicaFlowTest {
     @MockitoBean ProductoRepository productos;
 
     private MockHttpSession session(String role) {
+        Usuario u = usuarios.findById(42).orElseGet(Usuario::new); u.setActivo(true); u.setRol(Usuario.Rol.valueOf(role));
+        when(usuarios.findById(42)).thenReturn(Optional.of(u));
         MockHttpSession s = new MockHttpSession(); s.setAttribute("usuarioId",42); s.setAttribute("rol",role); return s;
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"ADMINISTRADOR,200,200", "CAJERO,403,403", "VETERINARIO,200,403"})
+    void matrizDeAccesos(String rol, int clinica, int catalogo) throws Exception {
+        var s=session(rol);
+        mvc.perform(get("/api/clinica/duenos").session(s)).andExpect(status().is(clinica));
+        mvc.perform(get("/api/productos").session(s)).andExpect(status().isOk());
+        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().is(catalogo));
+        assertEquals(rol,s.getAttribute("rol"));
+    }
+    @Test void desactivarUsuarioInvalidaSesionExistente() throws Exception {
+        var s=session("ADMINISTRADOR"); usuarios.findById(42).orElseThrow().setActivo(false);
+        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isForbidden());
+        assertTrue(s.isInvalid());
+    }
+    @Test void cambiarRolInvalidaSesionExistente() throws Exception {
+        var s=session("ADMINISTRADOR"); usuarios.findById(42).orElseThrow().setRol(Usuario.Rol.CAJERO);
+        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isForbidden());
+        assertTrue(s.isInvalid());
+    }
+    @Test void usuarioInexistenteYSesionAusenteNoAcceden() throws Exception {
+        var s=session("ADMINISTRADOR"); when(usuarios.findById(42)).thenReturn(Optional.empty());
+        mvc.perform(get("/api/productos").session(s)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/productos")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/auth/sesion")).andExpect(status().isUnauthorized());
+    }
     @Test void registraDuenoYVinculaMascota() throws Exception {
         when(duenos.save(any())).thenAnswer(i -> i.getArgument(0));
         mvc.perform(post("/api/clinica/duenos").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)

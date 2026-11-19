@@ -25,6 +25,7 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableCell;
@@ -101,7 +102,16 @@ public class CajaApp extends Application {
         estadoServidor.getStyleClass().add("connection-status");
         Button cerrarSesion = new Button("Cerrar sesión"); cerrarSesion.getStyleClass().add("logout");
         cerrarSesion.setOnAction(e -> cerrarSesion());
-        HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, cerrarSesion);
+        Button panel = new Button("Volver al panel"); panel.setVisible(false); panel.setManaged(false);
+        panel.setOnAction(e -> {
+            if (!carrito.isEmpty()) {
+                Alert aviso = new Alert(Alert.AlertType.CONFIRMATION, "Al volver se descarta la captura local. Las ventas ya guardadas permanecen pendientes en Caja.", ButtonType.OK, ButtonType.CANCEL);
+                aviso.initOwner(ventanaPrincipal);
+                if (aviso.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            }
+            ventanaPrincipal.close();
+        });
+        HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, panel, cerrarSesion);
         barraSuperior.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         barraSuperior.getStyleClass().add("header");
 
@@ -185,11 +195,15 @@ public class CajaApp extends Application {
 
         ventana.setTitle("Sistema Veterinaria · Caja");
         ventana.setScene(escena);
+        ventana.setOnCloseRequest(e -> { if (cobroEnCurso) e.consume(); });
         ventana.show();
         captura.requestFocus();
         verificarServidor();
         request("GET","/api/auth/sesion",null).thenAccept(r -> Platform.runLater(() -> {
-            if(r.statusCode()==200)try{atendio=json.readTree(r.body()).path("nombre").asText("Cajero");encabezado.setText("Punto de venta / Caja · "+atendio);}catch(Exception ignored){}
+            if(r.statusCode()==200)try{JsonNode sesionActual = json.readTree(r.body());
+                boolean admin = "ADMINISTRADOR".equals(sesionActual.path("rol").asText());
+                panel.setVisible(admin); panel.setManaged(admin);
+                atendio=sesionActual.path("nombre").asText("Cajero");encabezado.setText("Punto de venta / Caja · "+atendio);}catch(Exception ignored){}
         }));
     }
 

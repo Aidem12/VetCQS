@@ -58,9 +58,10 @@ public class ProductoController {
         return productos.save(producto);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @PutMapping("/{id}")
     public Producto actualizar(@PathVariable Integer id, @Valid @RequestBody ProductoRequest request) {
-        Producto producto = productos.findById(id)
+        Producto producto = productos.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
         // Iteración 3: la existencia solo cambia con entradas, ventas o ajustes, para que todo quede en el kardex.
         java.math.BigDecimal existencia = producto.getStockActual();
@@ -69,10 +70,11 @@ public class ProductoController {
         return productos.save(producto);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void desactivar(@PathVariable Integer id) {
-        Producto producto = productos.findById(id)
+        Producto producto = productos.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
         producto.setActivo(false);
         productos.save(producto);

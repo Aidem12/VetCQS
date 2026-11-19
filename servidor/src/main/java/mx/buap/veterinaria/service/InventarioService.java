@@ -65,20 +65,20 @@ public class InventarioService {
 
     @Transactional(readOnly=true)
     public List<MovimientoInventario> historial(Integer productoId) {
-        return movimientos.findByProductoIdOrderByFechaDesc(productoId);
+        return movimientos.findByProductoIdOrderByFechaDescIdDesc(productoId);
     }
 
     /**
      * Kardex del producto, del movimiento más reciente al más antiguo. El saldo se reconstruye
      * desde la existencia actual hacia atrás, así siempre coincide con lo que hay en el sistema.
      */
-    @Transactional(readOnly=true)
+    @Transactional(readOnly=true, isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public List<MovimientoKardex> kardex(Integer productoId) {
         Producto producto = productos.findById(productoId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
         BigDecimal saldo = producto.getStockActual();
         List<MovimientoKardex> renglones = new ArrayList<>();
-        for (MovimientoInventario m : movimientos.findByProductoIdOrderByFechaDesc(productoId)) {
+        for (MovimientoInventario m : movimientos.findByProductoIdOrderByFechaDescIdDesc(productoId)) {
             String usuario = m.getUsuario() == null ? "" : m.getUsuario().getNombre();
             renglones.add(new MovimientoKardex(m.getId(), m.getFecha(), m.getTipo().name(), m.getCantidad(),
                     saldo, m.getMotivo(), m.getReferencia(), usuario));

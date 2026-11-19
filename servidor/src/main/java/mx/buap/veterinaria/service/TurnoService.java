@@ -20,7 +20,7 @@ public class TurnoService {
  public Map<String,Object> abrir(TurnoAperturaRequest r,Integer operador){
   if(turnos.findByCierreIsNull().isPresent())throw fallo("Ya existe un turno abierto");
   validarConteo(r.denominaciones(),r.fondoInicial());
-  Usuario u=usuarios.findById(operador).filter(Usuario::isActivo).filter(x -> x.getRol()==Usuario.Rol.CAJERO).orElseThrow(() -> fallo("Cajero no válido"));
+  Usuario u=usuarios.findById(operador).filter(Usuario::isActivo).filter(x -> (x.getRol()==Usuario.Rol.CAJERO || x.getRol()==Usuario.Rol.ADMINISTRADOR)).orElseThrow(() -> fallo("Cajero no válido"));
   Turno t=new Turno();t.setCajero(u);t.setFondoInicial(r.fondoInicial());turnos.save(t);
   auth.registrar(operador,null,"APERTURA","turno",t.getId(),"Fondo: "+r.fondoInicial()+" | Denominaciones: "+r.denominaciones());return resumen(t);
  }

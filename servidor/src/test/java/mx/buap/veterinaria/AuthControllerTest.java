@@ -55,6 +55,18 @@ class AuthControllerTest {
         assertEquals(null, request.getSession(false).getAttribute("rol"));
     }
 
+    @Test void loginFallidoEliminaAutenticacionAnterior() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        var s=request.getSession(); s.setAttribute("usuarioId",42); s.setAttribute("rol","ADMINISTRADOR");
+        controller.login(new LoginRequest("nadie","incorrecta"),s,request);
+        assertEquals(null,s.getAttribute("usuarioId"));
+        assertEquals(null,org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+    }
+    @Test void logoutInvalidaSesion() {
+        var s=new org.springframework.mock.web.MockHttpSession(); s.setAttribute("usuarioId",42);
+        assertEquals(HttpStatus.NO_CONTENT,controller.logout(s).getStatusCode());
+        org.junit.jupiter.api.Assertions.assertTrue(s.isInvalid());
+    }
     private Usuario usuarioActivo(String nombreUsuario, String contrasena, Usuario.Rol rol) {
         Usuario usuario = new Usuario();
         usuario.setUsuario(nombreUsuario);

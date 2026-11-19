@@ -76,7 +76,16 @@ public class ConsultorioApp extends Application {
         Button inventario = new Button("Revisar inventario · F4"); inventario.setOnAction(e -> revisarInventario());
         Button salir = new Button("Cerrar sesión"); salir.getStyleClass().add("logout"); salir.setOnAction(e -> cerrarSesion());
         Region espacio = new Region(); HBox.setHgrow(espacio, Priority.ALWAYS);
-        HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, salir);
+        Button panel = new Button("Volver al panel"); panel.setVisible(false); panel.setManaged(false);
+        panel.setOnAction(e -> {
+            if (!motivo.getText().isBlank() || !diagnostico.getText().isBlank() || !tratamiento.getText().isBlank() || !detalles.getItems().isEmpty()) {
+                Alert aviso = new Alert(Alert.AlertType.CONFIRMATION, "Al volver se descarta la captura local. Las consultas y precuentas ya guardadas se conservan.", ButtonType.OK, ButtonType.CANCEL);
+                aviso.initOwner(ventanaPrincipal);
+                if (aviso.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+            }
+            cerrandoSesion = true; ventanaPrincipal.close();
+        });
+        HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, panel, salir);
         barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT); barra.getStyleClass().add("header");
 
         buscar.setId("buscar-dueno"); buscar.setPromptText("Nombre o teléfono"); buscar.setMinWidth(0);
@@ -158,6 +167,11 @@ public class ConsultorioApp extends Application {
         });
         ventana.setMinWidth(1120); ventana.setMinHeight(720);
         ventana.setTitle("Sistema Veterinaria · Consultorio"); ventana.setScene(escena); ventana.show();
+        api("GET", "/api/auth/sesion", null, sesion -> {
+            boolean admin = "ADMINISTRADOR".equals(sesion.path("rol").asText());
+            panel.setVisible(admin); panel.setManaged(admin);
+            subtitulo.setText("Atención médica / Consultorio · " + sesion.path("nombre").asText());
+        }, this::error);
         api("GET", "/api/salud", null, n -> {estado.setText("Servidor: conectado");estado.getStyleClass().add("connected");}, e -> {estado.setText("Servidor: sin conexión");estado.getStyleClass().add("disconnected");});
         api("GET", "/api/productos", null, n -> {n.forEach(p -> {catalogoPrecuenta.put(id(p),p);selectorProducto.getItems().add(p);});detalles.refresh();}, this::error);
         buscarDuenos();

@@ -30,7 +30,11 @@ public class AuthController {
                         List.of(new SimpleGrantedAuthority("ROLE_" + u.getRol().name()))));
                 return ResponseEntity.ok(Map.of("id",u.getId(),"nombre",u.getNombre(),"usuario",u.getUsuario(),"rol",u.getRol()));
             })
-            .orElseGet(() -> ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error","Credenciales inválidas")));
+            .orElseGet(() -> {
+                session.removeAttribute("usuarioId"); session.removeAttribute("rol");
+                SecurityContextHolder.clearContext();
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error","Credenciales inválidas"));
+            });
     }
     @GetMapping("/sesion")
     public ResponseEntity<?> sesion(HttpSession session) {

@@ -10,10 +10,10 @@ import jakarta.validation.constraints.NotNull;
 
 public record VentaRequest(
         @NotEmpty List<@Valid DetalleRequest> detalles,
-        @NotNull @DecimalMin("0.00") BigDecimal descuento) {
+        @NotNull @DecimalMin("0.00") @jakarta.validation.constraints.Digits(integer=8,fraction=2) BigDecimal descuento) {
 
     public record DetalleRequest(
             @NotNull Integer productoId,
-            @NotNull @DecimalMin("0.01") BigDecimal cantidad) {
+            @NotNull @DecimalMin("0.01") @jakarta.validation.constraints.Digits(integer=8,fraction=2) BigDecimal cantidad) {
     }
 }

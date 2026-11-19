@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.util.List;
 @Configuration
 public class SecurityConfig {
+    private final mx.buap.veterinaria.repository.UsuarioRepository usuarios;
+    public SecurityConfig(mx.buap.veterinaria.repository.UsuarioRepository usuarios) { this.usuarios = usuarios; }
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
     @Bean SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable()).cors(cors -> {});
@@ -29,9 +31,9 @@ public class SecurityConfig {
             .requestMatchers(HttpMethod.GET, "/api/turnos/historial", "/api/turnos/*/reporte").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .requestMatchers(HttpMethod.GET, "/api/productos/**").hasAnyRole("ADMINISTRADOR", "CAJERO", "VETERINARIO")
             .requestMatchers("/api/productos/**").hasRole("ADMINISTRADOR")
-            .requestMatchers(HttpMethod.POST, "/api/ventas/precuentas").hasAnyRole("VETERINARIO", "CAJERO")
-            .requestMatchers("/api/ventas/**", "/api/turnos/**").hasRole("CAJERO")
-            .requestMatchers("/api/clinica/**").hasRole("VETERINARIO")
+            .requestMatchers(HttpMethod.POST, "/api/ventas/precuentas").hasAnyRole("ADMINISTRADOR", "VETERINARIO", "CAJERO")
+            .requestMatchers("/api/ventas/**", "/api/turnos/**", "/ws/caja").hasAnyRole("ADMINISTRADOR", "CAJERO")
+            .requestMatchers("/api/clinica/**").hasAnyRole("ADMINISTRADOR", "VETERINARIO")
             .requestMatchers("/api/facturas/**").hasAnyRole("ADMINISTRADOR", "CAJERO")
             .anyRequest().authenticated())
             .sessionManagement(session -> session
@@ -49,7 +51,13 @@ public class SecurityConfig {
                         : request.getSession(false).getAttribute("rol");
                 Object id = request.getSession(false) == null ? null
                         : request.getSession(false).getAttribute("usuarioId");
-                if (rol != null && id != null) {
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                if (id instanceof Integer usuarioId && rol instanceof String) {
+                    var usuario = usuarios.findById(usuarioId).filter(u -> u.isActivo() && u.getRol().name().equals(rol));
+                    if (usuario.isEmpty()) {
+                        request.getSession(false).invalidate();
+                        chain.doFilter(request, response); return;
+                    }
                     var auth = new UsernamePasswordAuthenticationToken(id.toString(), null,
                             List.of(new SimpleGrantedAuthority("ROLE_" + rol)));
                     org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);

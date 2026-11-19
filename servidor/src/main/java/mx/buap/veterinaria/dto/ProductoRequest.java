@@ -11,8 +11,8 @@ public record ProductoRequest(
         String codigoBarras,
         @NotBlank String nombre,
         @NotBlank @Pattern(regexp = "PRODUCTO|SERVICIO") String tipo,
-        @NotNull @DecimalMin("0.00") BigDecimal precio,
-        @NotNull @DecimalMin("0.00") BigDecimal stockActual,
-        @NotNull @DecimalMin("0.00") BigDecimal stockMinimo,
+        @NotNull @DecimalMin("0.00") @jakarta.validation.constraints.Digits(integer=8,fraction=2) BigDecimal precio,
+        @NotNull @DecimalMin("0.00") @jakarta.validation.constraints.Digits(integer=8,fraction=2) BigDecimal stockActual,
+        @NotNull @DecimalMin("0.00") @jakarta.validation.constraints.Digits(integer=8,fraction=2) BigDecimal stockMinimo,
         boolean manejaCaducidad) {
 }

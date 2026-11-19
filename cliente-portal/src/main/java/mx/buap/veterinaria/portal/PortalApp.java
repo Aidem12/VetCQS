@@ -26,6 +26,7 @@ public class PortalApp extends Application {
     private Stage stage;
     private CookieManager cookies;
     private Process cliente;
+    private JsonNode sesionActual;
     private final Label error = new Label();
 
     @Override public void start(Stage primaryStage) {
@@ -42,6 +43,7 @@ public class PortalApp extends Application {
     }
 
     private void showLogin() {
+        sesionActual = null;
         error.setText("");
         stage.setMaximized(false);
         TextField usuario = new TextField(); usuario.setPromptText("Usuario");
@@ -102,12 +104,46 @@ public class PortalApp extends Application {
     }
 
     private void route(JsonNode session) {
+        sesionActual = session;
         switch (session.path("rol").asText()) {
-            case "ADMINISTRADOR" -> new AdminView(http, SERVER, stage, session, this::logout).show();
+            case "ADMINISTRADOR" -> mostrarPanel();
             case "CAJERO" -> lanzarCliente("cliente-caja");
             case "VETERINARIO" -> lanzarCliente("cliente-consultorio");
             default -> { cookies.getCookieStore().removeAll(); error.setText("El rol de esta cuenta no está habilitado."); }
         }
+    }
+
+    private void mostrarPanel() {
+        Button salir = new Button("Cerrar sesión"); salir.getStyleClass().add("logout");
+        salir.setOnAction(e -> logout());
+        Button administracion = new Button("Administración");
+        Button caja = new Button("Caja");
+        Button consultorio = new Button("Consultorio");
+        administracion.setOnAction(e -> new AdminView(http, SERVER, stage, sesionActual, this::logout, this::volverAlPanel).show());
+        caja.setOnAction(e -> lanzarCliente("cliente-caja"));
+        consultorio.setOnAction(e -> lanzarCliente("cliente-consultorio"));
+        for (Button b : new Button[]{administracion, caja, consultorio}) {
+            b.setMaxWidth(Double.MAX_VALUE); b.getStyleClass().add("primary");
+        }
+        VBox opciones = new VBox(18, title("Seleccione un área"),
+                new Label("Su cuenta conserva los permisos de administrador."), administracion, caja, consultorio, error);
+        opciones.getStyleClass().add("card"); opciones.setMaxWidth(480); opciones.setMaxHeight(Region.USE_PREF_SIZE);
+        StackPane contenido = new StackPane(opciones); contenido.setPadding(new Insets(28));
+        stage.setTitle("Sistema Veterinaria · Panel principal");
+        stage.setScene(scene(new BorderPane(contenido, header("Administrador / " + sesionActual.path("nombre").asText(), salir), null, null, null), 900, 600));
+        stage.show();
+    }
+
+    private void volverAlPanel() {
+        request("GET", "/api/auth/sesion", null).thenAccept(r -> Platform.runLater(() -> {
+            try {
+                JsonNode actual = json.readTree(r.body());
+                if (r.statusCode() == 200 && "ADMINISTRADOR".equals(actual.path("rol").asText())) {
+                    sesionActual = actual; error.setText(""); mostrarPanel(); return;
+                }
+            } catch (Exception ignored) { }
+            logout(r.statusCode() == 503 ? "No se pudo verificar la sesión. Ingrese nuevamente." : null);
+        }));
     }
 
     private void lanzarCliente(String modulo) {
@@ -128,7 +164,8 @@ public class PortalApp extends Application {
             // El portal permanece vivo para recuperar el login cuando el área de trabajo termina.
             cliente.onExit().thenAccept(terminado -> Platform.runLater(() -> {
                 cliente = null;
-                logout(terminado.exitValue() == 0 ? null : "No se pudo mantener abierta el área de trabajo. Verifique Java 21 y Maven.");
+                if (sesionActual != null && "ADMINISTRADOR".equals(sesionActual.path("rol").asText())) volverAlPanel();
+                else logout(terminado.exitValue() == 0 ? null : "No se pudo mantener abierta el área de trabajo. Verifique Java 21 y Maven.");
             }));
         } catch (Exception ex) {
             error.setText("No se pudo abrir el área de trabajo. Verifique Java 21 y Maven.");

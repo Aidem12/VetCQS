@@ -73,7 +73,7 @@ class InventarioIteracion3Test {
                 MovimientoInventario.Tipo.ENTRADA, new BigDecimal("10"), "Compra");
         MovimientoInventario venta = service.nuevo(p, usuarios.findById(1).get(),
                 MovimientoInventario.Tipo.VENTA, new BigDecimal("-2"), "Venta");
-        when(movimientos.findByProductoIdOrderByFechaDesc(7)).thenReturn(List.of(venta, entrada));
+        when(movimientos.findByProductoIdOrderByFechaDescIdDesc(7)).thenReturn(List.of(venta, entrada));
         List<MovimientoKardex> kardex = service.kardex(7);
         assertEquals(0, new BigDecimal("8").compareTo(kardex.get(0).saldo()));
         assertEquals(0, new BigDecimal("10").compareTo(kardex.get(1).saldo()));

@@ -21,6 +21,7 @@ public class FlujoClinicoTest {
     static final ObjectMapper json=new ObjectMapper();
     static final List<JsonNode> owners=new CopyOnWriteArrayList<>(), pets=new CopyOnWriteArrayList<>(), records=new CopyOnWriteArrayList<>();
     static final Set<String> sessions=ConcurrentHashMap.newKeySet();
+    static final Map<String,String> roles=new ConcurrentHashMap<>();
     static Stage portalStage, workStage;
     static volatile int logouts=0;
     static volatile String requestedModule;
@@ -36,13 +37,14 @@ public class FlujoClinicoTest {
                 String cookie=Optional.ofNullable(x.getRequestHeaders().getFirst("Cookie")).orElse("").replace("\"", "");
                 JsonNode body=method.equals("POST") ? json.readTree(x.getRequestBody()) : null;
                 if(path.equals("/api/auth/login")) {
-                    String role=body.path("usuario").asText(); String token="JSESSIONID="+UUID.randomUUID(); sessions.add(token);
+                    String role=body.path("usuario").asText(); String token="JSESSIONID="+UUID.randomUUID(); sessions.add(token); roles.put(token,role);
                     x.getResponseHeaders().add("Set-Cookie",token+"; Path=/; HttpOnly");
                     result=json.createObjectNode().put("id",42).put("rol",role).put("nombre","Prueba UI");
                 } else if(path.equals("/api/auth/logout")) {
                     sessions.removeIf(cookie::contains); logouts++; code=204;
                 } else if(path.equals("/api/salud")) { result=json.createObjectNode().put("estado","OK"); }
                 else if(sessions.stream().noneMatch(cookie::contains)) { code=403; }
+                else if(path.equals("/api/auth/sesion")) { result=json.createObjectNode().put("id",42).put("nombre","Prueba UI").put("rol",roles.get(sessions.stream().filter(cookie::contains).findFirst().orElseThrow())); }
                 else if(path.equals("/api/clinica/duenos")) {
                     if(method.equals("POST")) { ((ObjectNode)body).put("id",owners.size()+1); owners.add(body); result=body; code=201; }
                     else if(failOwners) { code=503; } else result=json.valueToTree(owners);
@@ -69,11 +71,29 @@ public class FlujoClinicoTest {
         Platform.startup(() -> Platform.setImplicitExit(false));
         try {
             fx(() -> { portalStage=new Stage(); new TestPortal().start(portalStage); return null; });
-            login("ADMINISTRADOR"); waitFor(() -> fxUnchecked(() -> portalStage.getTitle().contains("Administración")));
+            login("ADMINISTRADOR"); waitPanel();
+            click(portalStage,"Administración"); waitFor(() -> fxUnchecked(() -> portalStage.getTitle().contains("Administración")));
             waitFor(() -> fxUnchecked(() -> ((TableView<?>)portalStage.getScene().lookup("#personal")).getItems().size()==2));
             check(fx(() -> ((JsonNode)((TableView<?>)portalStage.getScene().lookup("#personal")).getItems().get(0)).path("nombre").asText().equals("Persona uno")),"Personal renderizado por registro, no como arreglo JSON");
             check(fx(() -> button(portalStage,"Historial de cortes")!=null),"Historial disponible para administrador");
-            click(portalStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Cookie administrativa invalidada");
+            String adminCookie=sessions.iterator().next();
+            click(portalStage,"Volver al panel"); waitPanel();
+            for(String area:List.of("Caja","Consultorio")) {
+                workStage=null; click(portalStage,area);
+                waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing() && button(workStage,"Volver al panel").isVisible()));
+                check(sessions.contains(adminCookie) && sessions.size()==1,"Misma sesión administrativa en " + area);
+                click(workStage,"Volver al panel"); waitPanel();
+            }
+            workStage=null; click(portalStage,"Caja");
+            waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing()));
+            click(workStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Logout administrativo desde Caja invalida sesión");
+            workStage=null;
+            login("ADMINISTRADOR"); waitPanel(); click(portalStage,"Consultorio");
+            waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing()));
+            click(workStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Logout administrativo desde Consultorio invalida sesión");
+            workStage=null;
+            login("ADMINISTRADOR"); waitPanel(); click(portalStage,"Administración");
+            click(portalStage,"Cerrar sesión"); waitLogin(); check(sessions.isEmpty(),"Logout administrativo desde Administración invalida sesión");
             login("CAJERO"); waitFor(() -> workStage!=null && fxUnchecked(() -> workStage.isShowing()));
             check("cliente-caja".equals(requestedModule),"Entrada directa a Caja");
             click(workStage,"Abrir turno"); Stage opening=dialog("Apertura de turno · Fondo inicial");
@@ -123,6 +143,8 @@ public class FlujoClinicoTest {
             System.out.println("UI_FLOW_OK: login directo, logout de 3 roles, dueño, mascota, consulta, historial, inventario y recuperación de errores.");
         } finally { server.stop(0); fx(() -> { for(Window w:List.copyOf(Window.getWindows())) w.hide(); return null; }); Platform.exit(); }
     }
+
+    static void waitPanel() throws Exception { waitFor(() -> fxUnchecked(() -> portalStage.isShowing() && portalStage.getTitle().contains("Panel principal"))); }
 
     public static class TestPortal extends PortalApp {
         @Override protected Process iniciarProceso(ProcessBuilder builder) {

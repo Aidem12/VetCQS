@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 /** Administración protegida: todas las operaciones reutilizan el HttpClient de la sesión. */
 final class AdminView {
     private final Runnable logout;
+    private final Runnable volver;
     private final HttpClient http;
     private final String server;
     private final Stage stage;
@@ -33,7 +34,8 @@ final class AdminView {
     /** Iteración 3: aviso de productos en o por debajo del stock mínimo (RF-14). */
     private final Label stockAlert = new Label();
 
-    AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout) {
+    AdminView(HttpClient http, String server, Stage stage, JsonNode session, Runnable logout, Runnable volver) {
+        this.volver = volver;
         this.logout = logout;
         this.http = http;
         this.server = server;
@@ -42,6 +44,7 @@ final class AdminView {
     }
 
     void show() {
+        Button panel = new Button("Volver al panel"); panel.setOnAction(e -> volver.run());
         Button cerrarSesion = new Button("Cerrar sesión");
         cerrarSesion.getStyleClass().add("logout");
         cerrarSesion.setOnAction(e -> logout.run());
@@ -90,7 +93,7 @@ final class AdminView {
         connection.getStyleClass().add("connection-status");
         TabPane sections = new TabPane(personal, inventario);
         BorderPane root = new BorderPane(sections);
-        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, connection, cortes, refresh, cerrarSesion)));
+        root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, connection, cortes, refresh, panel, cerrarSesion)));
         BorderPane.setMargin(sections, new Insets(18));
         status.getStyleClass().add("muted"); status.setWrapText(true);
         root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));
