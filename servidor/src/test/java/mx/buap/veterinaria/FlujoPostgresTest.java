@@ -50,8 +50,12 @@ class FlujoPostgresTest {
  @org.springframework.beans.factory.annotation.Autowired org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext web;
  final ObjectMapper json=new ObjectMapper();
  HttpClient client(){return HttpClient.newBuilder().cookieHandler(new CookieManager(null,CookiePolicy.ACCEPT_ALL)).build();}
- JsonNode request(HttpClient c,String method,String path,Object body,int expected) throws Exception {
+ JsonNode request(HttpClient c,String method,String path,Object body,int expected) throws Exception {return request(c,method,path,body,expected,true);}
+ /** Igual que los clientes de escritorio: devuelve la cookie XSRF-TOKEN en la cabecera X-XSRF-TOKEN. */
+ JsonNode request(HttpClient c,String method,String path,Object body,int expected,boolean conCsrf) throws Exception {
   var b=HttpRequest.newBuilder(URI.create("http://localhost:"+port+path)).header("Content-Type","application/json");
+  if(conCsrf) c.cookieHandler().map(CookieManager.class::cast).flatMap(m -> m.getCookieStore().getCookies().stream()
+    .filter(k -> k.getName().equals("XSRF-TOKEN")).map(java.net.HttpCookie::getValue).findFirst()).ifPresent(t -> b.header("X-XSRF-TOKEN",t));
   var req=method.equals("GET")?b.GET().build():b.method(method,HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
   var res=c.send(req,HttpResponse.BodyHandlers.ofString());
   assertEquals(expected,res.statusCode(),method+" "+path+" => "+res.body());
@@ -81,7 +85,14 @@ class FlujoPostgresTest {
    assertInstanceOf(WebSocketHandshakeException.class,rechazo.getCause());
    assertEquals(403,((WebSocketHandshakeException)rechazo.getCause()).getResponse().statusCode());
   } finally { ws.sendClose(WebSocket.NORMAL_CLOSURE,"fin prueba").join(); }
-  request(client(),"GET","/api/productos",null,403);
+  request(client(),"GET","/api/productos",null,401);
+  // CSRF: una escritura con sesión válida pero sin la cabecera X-XSRF-TOKEN se rechaza y no cambia nada.
+  request(admin,"POST","/api/empleados",Map.of("nombre","sin token","usuario","sin_token","contrasena",password,"rol","CAJERO"),403,false);
+  assertEquals(3,request(admin,"GET","/api/empleados",null,200).size());
+  // Límite de intentos: al quinto fallo se bloquea el usuario y el sexto intento ni siquiera se evalúa.
+  for(int i=1;i<=4;i++) request(client(),"POST","/api/auth/login",Map.of("usuario","intruso","contrasena","x"+i),401);
+  request(client(),"POST","/api/auth/login",Map.of("usuario","intruso","contrasena","x5"),429);
+  request(client(),"POST","/api/auth/login",Map.of("usuario","intruso","contrasena","x6"),429);
   request(caja,"GET","/api/empleados",null,403); request(vet,"GET","/api/empleados",null,403);
   request(caja,"GET","/api/clinica/duenos",null,403); request(vet,"GET","/api/ventas/pendientes",null,403);
   request(client(),"POST","/api/auth/login",Map.of("usuario","test_admin","contrasena","incorrecta"),401);
@@ -99,6 +110,11 @@ class FlujoPostgresTest {
   request(vet,"POST","/api/ventas/precuentas",Map.of("consultaId",consultation,"detalles",List.of(Map.of("productoId",service,"cantidad",0.001))),400);
   int sale=request(vet,"POST","/api/ventas/precuentas",Map.of("consultaId",consultation,"detalles",List.of(Map.of("productoId",service,"cantidad",1),Map.of("productoId",product,"cantidad",2))),201).path("id").asInt();
   request(vet,"POST","/api/ventas/precuentas",Map.of("consultaId",consultation,"detalles",List.of(Map.of("productoId",service,"cantidad",1))),409);
+  // El aviso a Caja queda persistido para recuperarlo aunque la caja no estuviera conectada.
+  var avisosCaja=request(caja,"GET","/api/ventas/avisos",null,200);
+  assertTrue(avisosCaja.size()>=1);
+  assertEquals("PRECUENTA",avisosCaja.get(avisosCaja.size()-1).path("tipo").asText());
+  assertEquals(sale,avisosCaja.get(avisosCaja.size()-1).path("ventaId").asInt());
   var pending=request(caja,"GET","/api/ventas/pendientes",null,200);
   assertEquals("Paciente prueba",pending.get(0).path("paciente").asText());
   assertEquals(2,pending.get(0).path("detalles").size());
@@ -168,10 +184,10 @@ class FlujoPostgresTest {
   // Usuario desactivado no puede mantener una sesión previa ni iniciar otra.
   int vetId=request(vet,"GET","/api/auth/sesion",null,200).path("id").asInt();
   request(admin,"PUT","/api/empleados/"+vetId+"/desactivar",Map.of(),200);
-  request(vet,"GET","/api/clinica/duenos",null,403);
+  request(vet,"GET","/api/clinica/duenos",null,401);
   request(client(),"POST","/api/auth/login",Map.of("usuario","test_vet","contrasena",password),401);
   request(caja,"POST","/api/auth/logout",Map.of(),204);
-  request(caja,"GET","/api/ventas/pendientes",null,403);
+  request(caja,"GET","/api/ventas/pendientes",null,401);
   // Ejercitar la expiración real de Tomcat sin esperas de inactividad ni tocar configuración productiva.
   var tomcat=((org.springframework.boot.web.embedded.tomcat.TomcatWebServer)web.getWebServer()).getTomcat();
   int expiradas=0;
@@ -181,6 +197,6 @@ class FlujoPostgresTest {
    }
   }
   assertEquals(1,expiradas);
-  request(admin,"GET","/api/productos/catalogo",null,403); request(admin,"GET","/api/auth/sesion",null,401);
+  request(admin,"GET","/api/productos/catalogo",null,401); request(admin,"GET","/api/auth/sesion",null,401);
  }
 }

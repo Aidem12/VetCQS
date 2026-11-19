@@ -21,7 +21,25 @@ public class SecurityConfig {
     public SecurityConfig(mx.buap.veterinaria.repository.UsuarioRepository usuarios) { this.usuarios = usuarios; }
     @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
     @Bean SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable()).cors(cors -> {});
+        // CSRF con doble envío: el servidor entrega la cookie XSRF-TOKEN y los clientes la devuelven en la
+        // cabecera X-XSRF-TOKEN en cada POST/PUT/PATCH/DELETE. El login queda exento porque aún no hay sesión.
+        var csrfHandler = new org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler();
+        csrfHandler.setCsrfRequestAttributeName(null);   // genera la cookie desde la primera respuesta
+        http.csrf(csrf -> csrf
+                .csrfTokenRepository(org.springframework.security.web.csrf.CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRequestHandler(csrfHandler)
+                .ignoringRequestMatchers("/api/auth/login"))
+            .cors(cors -> {})
+            .headers(h -> h
+                .contentTypeOptions(c -> {})
+                .frameOptions(f -> f.deny())
+                .referrerPolicy(r -> r.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                .contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
+            .exceptionHandling(e -> e
+                .authenticationEntryPoint((req, res, ex) -> res.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Inicie sesión."))
+                .accessDeniedHandler((req, res, ex) -> res.sendError(HttpServletResponse.SC_FORBIDDEN,
+                        ex instanceof org.springframework.security.web.csrf.CsrfException
+                                ? "Token CSRF ausente o inválido. Vuelva a abrir la pantalla." : "No tiene permiso para esta operación.")));
         http.addFilterBefore(sessionAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
         http.authorizeHttpRequests(auth -> auth
             .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
@@ -43,8 +61,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                 // AuthController ya rota el id al iniciar sesión. Rotarlo en cada petición rompía las
                 // peticiones simultáneas (Administración carga personal, productos y alertas a la vez).
-                .sessionFixation(fixation -> fixation.none())
-                .maximumSessions(1));
+                // Una sesión por usuario: la controla SesionesActivas al iniciar sesión.
+                .sessionFixation(fixation -> fixation.none()));
         return http.build();
     }
 

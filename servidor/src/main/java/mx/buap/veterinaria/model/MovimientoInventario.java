@@ -7,7 +7,7 @@ import jakarta.persistence.*;
 @Entity
 @Table(name = "movimiento_inventario")
 public class MovimientoInventario {
-    public enum Tipo { ENTRADA, VENTA, AJUSTE, CANCELACION }
+    public enum Tipo { ENTRADA, VENTA, AJUSTE, CANCELACION, DEVOLUCION }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "producto_id")
@@ -20,6 +20,8 @@ public class MovimientoInventario {
     @Column(nullable = false) private LocalDateTime fecha = LocalDateTime.now();
     @Column(length = 200) private String motivo;
     @Column(length = 80) private String referencia;
+    @Column(name = "lote_id") private Integer loteId;
+    @Column(name = "venta_id") private Integer ventaId;
     public Integer getId() { return id; }
     public Producto getProducto() { return producto; } public void setProducto(Producto v) { producto=v; }
     public Usuario getUsuario() { return usuario; } public void setUsuario(Usuario v) { usuario=v; }
@@ -28,4 +30,6 @@ public class MovimientoInventario {
     public LocalDateTime getFecha() { return fecha; }
     public String getMotivo() { return motivo; } public void setMotivo(String v) { motivo=v; }
     public String getReferencia() { return referencia; } public void setReferencia(String v) { referencia=v; }
+    public Integer getLoteId() { return loteId; } public void setLoteId(Integer v) { loteId=v; }
+    public Integer getVentaId() { return ventaId; } public void setVentaId(Integer v) { ventaId=v; }
 }

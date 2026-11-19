@@ -52,6 +52,7 @@ final class CortesView {
         dialogo.getDialogPane().lookupButton(ButtonType.CANCEL).setDisable(true);
         dialogo.setOnCloseRequest(e -> {if(boton.isDisabled())e.consume();});
         HttpRequest.Builder b=HttpRequest.newBuilder(URI.create(server+ruta)).timeout(Duration.ofSeconds(12)).header("Content-Type","application/json");
+        Csrf.aplicar(http,server,metodo,b);
         HttpRequest req=metodo.equals("GET")?b.GET().build():b.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build();
         http.sendAsync(req,HttpResponse.BodyHandlers.ofString()).whenComplete((response,ex) -> Platform.runLater(() -> {
             boton.setDisable(false);dialogo.getDialogPane().lookupButton(ButtonType.CANCEL).setDisable(false);if(!dialogo.isShowing())return;

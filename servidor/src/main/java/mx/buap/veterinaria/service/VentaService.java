@@ -41,6 +41,16 @@ public class VentaService {
     private final MovimientoInventarioRepository movimientos;
     private final UsuarioRepository usuarios;
     private final TurnoRepository turnos;
+    /** Lotes y caducidades; se inyecta por método para conservar el constructor usado en pruebas. */
+    private mx.buap.veterinaria.farmacia.FarmaciaService farmacia;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setFarmacia(mx.buap.veterinaria.farmacia.FarmaciaService farmacia) { this.farmacia = farmacia; }
+    /** Avisos en tiempo real a Caja cuando Consultorio envía una precuenta. */
+    private mx.buap.veterinaria.caja.AvisosCajaService avisosCaja;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAvisosCaja(mx.buap.veterinaria.caja.AvisosCajaService avisosCaja) { this.avisosCaja = avisosCaja; }
 
     public VentaService(VentaRepository ventas, ProductoRepository productos, PagoRepository pagos,
             ConsultaRepository consultas, MovimientoInventarioRepository movimientos, UsuarioRepository usuarios,
@@ -67,7 +77,13 @@ public class VentaService {
         Venta venta = crear(ventaRequest);
         venta.setConsulta(consulta);
         venta.setEstado(Venta.Estado.PRECUENTA);
-        return ventas.save(venta);
+        Venta guardada = ventas.save(venta);
+        if (avisosCaja != null) {
+            String mascota = consulta.getMascota() == null ? "" : " de " + consulta.getMascota().getNombre();
+            avisosCaja.publicar("PRECUENTA", guardada.getId(), "Nueva precuenta médica" + mascota + " · folio "
+                    + guardada.getId() + " · $" + guardada.getTotal());
+        }
+        return guardada;
     }
 
     @Transactional
@@ -83,10 +99,16 @@ public class VentaService {
                             "Producto no encontrado o inactivo"));
             BigDecimal cantidadSolicitada = cantidades.merge(
                     producto.getId(), requestDetalle.cantidad(), BigDecimal::add);
-            if (producto.getTipo().equals("PRODUCTO")
-                    && producto.getStockActual().compareTo(cantidadSolicitada) < 0) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Existencia insuficiente para: " + producto.getNombre());
+            if (producto.getTipo().equals("PRODUCTO")) {
+                // Para medicamentos con caducidad solo cuenta lo que hay en lotes vigentes.
+                java.math.BigDecimal disponible = farmacia == null ? producto.getStockActual()
+                        : farmacia.disponibleParaVenta(producto);
+                if (disponible.compareTo(cantidadSolicitada) < 0) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, producto.isManejaCaducidad()
+                            && producto.getStockActual().compareTo(cantidadSolicitada) >= 0
+                            ? "No se puede vender " + producto.getNombre() + ": la existencia disponible está caducada."
+                            : "Existencia insuficiente para: " + producto.getNombre());
+                }
             }
             VentaDetalle detalle = new VentaDetalle();
             detalle.setProducto(producto);
@@ -141,7 +163,13 @@ public class VentaService {
         for (VentaDetalle detalle : venta.getDetalles()) {
             Producto producto = productos.findByIdForUpdate(detalle.getProducto().getId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
-            if (producto.getTipo().equals("PRODUCTO")) {
+            if (producto.getTipo().equals("PRODUCTO") && producto.isManejaCaducidad() && farmacia != null) {
+                Usuario operador = usuarios.findById(operadorId).filter(Usuario::isActivo)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "No hay operador activo"));
+                // FEFO: descuenta de los lotes vigentes que vencen primero y registra cada lote usado.
+                farmacia.consumirFefo(producto, detalle.getCantidad(), operador, MovimientoInventario.Tipo.VENTA,
+                        "Venta " + venta.getId(), venta.getFolio(), venta.getId());
+            } else if (producto.getTipo().equals("PRODUCTO")) {
                 if (producto.getStockActual().compareTo(detalle.getCantidad()) < 0) {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "Existencia insuficiente para: " + producto.getNombre());
                 }
@@ -155,6 +183,7 @@ public class VentaService {
                 movimiento.setCantidad(detalle.getCantidad().negate());
                 movimiento.setMotivo("Deducción automática por venta " + venta.getId());
                 movimiento.setReferencia(venta.getFolio());
+                movimiento.setVentaId(venta.getId());
                 movimientos.save(movimiento);
             }
         }

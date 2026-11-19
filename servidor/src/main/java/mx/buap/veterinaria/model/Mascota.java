@@ -29,6 +29,13 @@ public class Mascota {
     private LocalDate fechaNacimiento;
     @Column(name = "peso_kg", precision = 6, scale = 2)
     private BigDecimal pesoKg;
+    @Column(length = 40)
+    private String identificacion;
+    @Column(length = 40)
+    private String color;
+    private Boolean esterilizado;
+    @Column(columnDefinition = "TEXT")
+    private String observaciones;
 
     public Integer getId() { return id; }
     public Dueno getDueno() { return dueno; }
@@ -45,4 +52,12 @@ public class Mascota {
     public void setFechaNacimiento(LocalDate fechaNacimiento) { this.fechaNacimiento = fechaNacimiento; }
     public BigDecimal getPesoKg() { return pesoKg; }
     public void setPesoKg(BigDecimal pesoKg) { this.pesoKg = pesoKg; }
+    public String getIdentificacion() { return identificacion; }
+    public void setIdentificacion(String identificacion) { this.identificacion = identificacion; }
+    public String getColor() { return color; }
+    public void setColor(String color) { this.color = color; }
+    public Boolean getEsterilizado() { return esterilizado; }
+    public void setEsterilizado(Boolean esterilizado) { this.esterilizado = esterilizado; }
+    public String getObservaciones() { return observaciones; }
+    public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
 }

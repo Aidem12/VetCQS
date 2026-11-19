@@ -110,7 +110,21 @@ final class AdminView {
         Button cortes = new Button("Historial de cortes");
         cortes.setOnAction(e -> new CortesView(http, stage, server).historial());
         connection.getStyleClass().add("connection-status");
-        TabPane sections = new TabPane(personal, inventario);
+        Api apiSecciones = new Api(http, server);
+        FarmaciaPane farmacia = new FarmaciaPane(apiSecciones, stage);
+        IndicadoresPane indicadores = new IndicadoresPane(apiSecciones, stage);
+        AgendaConfigPane agenda = new AgendaConfigPane(apiSecciones, stage);
+        BitacoraPane bitacora = new BitacoraPane(apiSecciones);
+        Tab tabIndicadores = new Tab("Indicadores", indicadores.crear()); tabIndicadores.setClosable(false);
+        Tab tabFarmacia = new Tab("Farmacia y lotes", farmacia.crear()); tabFarmacia.setClosable(false);
+        Tab tabAgenda = new Tab("Agenda", agenda.crear()); tabAgenda.setClosable(false);
+        Tab tabBitacora = new Tab("Bitácora", bitacora.crear()); tabBitacora.setClosable(false);
+        // Cada sección nueva consulta al servidor la primera vez que se abre (y al volver a ella).
+        tabIndicadores.setOnSelectionChanged(e -> { if (tabIndicadores.isSelected()) indicadores.cargar(); });
+        tabFarmacia.setOnSelectionChanged(e -> { if (tabFarmacia.isSelected()) farmacia.cargar(); });
+        tabAgenda.setOnSelectionChanged(e -> { if (tabAgenda.isSelected()) agenda.cargar(); });
+        tabBitacora.setOnSelectionChanged(e -> { if (tabBitacora.isSelected()) bitacora.cargar(); });
+        TabPane sections = new TabPane(personal, inventario, tabFarmacia, tabIndicadores, tabAgenda, tabBitacora);
         BorderPane root = new BorderPane(sections);
         root.setTop(PortalApp.header("Administración  /  " + session.path("nombre").asText(), new HBox(8, connection, cortes, refresh, panel, cerrarSesion)));
         BorderPane.setMargin(sections, new Insets(18));
@@ -118,7 +132,7 @@ final class AdminView {
         root.setBottom(status); BorderPane.setMargin(status, new Insets(0, 20, 16, 20));
         stage.setTitle("Sistema Veterinaria · Administración");
         stage.setMinWidth(820); stage.setMinHeight(600);
-        javafx.scene.Scene scene = PortalApp.scene(root, 1100, 700);
+        javafx.scene.Scene scene = PortalApp.scene(root, 1240, 760);
         scene.setOnKeyPressed(e -> {
             if (e.getCode() == javafx.scene.input.KeyCode.F5) { load(); e.consume(); }
         });
@@ -590,6 +604,7 @@ final class AdminView {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(server + path))
                     .timeout(Duration.ofSeconds(8)).header("Content-Type", "application/json");
+            Csrf.aplicar(http, server, method, builder);
             HttpRequest request = method.equals("GET") ? builder.GET().build()
                     : method.equals("DELETE") ? builder.DELETE().build()
                     : builder.method(method, HttpRequest.BodyPublishers.ofString(body)).build();

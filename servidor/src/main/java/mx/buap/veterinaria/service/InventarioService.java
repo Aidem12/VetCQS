@@ -93,6 +93,11 @@ public class InventarioService {
         if (!"PRODUCTO".equals(producto.getTipo())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Los servicios no manejan existencias");
         }
+        if (producto.isManejaCaducidad()) {
+            // Mantiene la suma de lotes igual a la existencia general: estos productos se mueven por lote.
+            throw new ResponseStatusException(HttpStatus.CONFLICT, producto.getNombre()
+                    + " maneja lotes y caducidad: registre la entrada como compra con lote o ajuste el lote en Farmacia.");
+        }
         return producto;
     }
     private Usuario operador(Integer id) {
