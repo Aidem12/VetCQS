@@ -14,9 +14,9 @@ public interface LoteRepository extends JpaRepository<Lote, Integer> {
 
     @Query("""
         select l from Lote l join fetch l.producto p left join fetch l.proveedor pr
-        where (:productoId is null or p.id = :productoId)
-          and (:proveedorId is null or pr.id = :proveedorId)
-          and (:caducaAntes is null or l.caducidad <= :caducaAntes)
+        where (cast(:productoId as Integer) is null or p.id = :productoId)
+          and (cast(:proveedorId as Integer) is null or pr.id = :proveedorId)
+          and (cast(:caducaAntes as LocalDate) is null or l.caducidad <= :caducaAntes)
           and (:conExistencia = false or l.cantidad > 0)
         order by l.caducidad, p.nombre, l.id""")
     List<Lote> consultar(Integer productoId, Integer proveedorId, LocalDate caducaAntes, boolean conExistencia);

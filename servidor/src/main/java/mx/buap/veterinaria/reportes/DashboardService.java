@@ -15,6 +15,7 @@ import mx.buap.veterinaria.comun.Reloj;
 /**
  * Indicadores calculados con consultas agregadas en PostgreSQL (no se cargan tablas completas).
  * Ingresos = ventas PAGADAS menos devoluciones del periodo; se pueden reconciliar con las tablas venta y pago.
+ * El filtro por usuario usa el cajero del turno en que se cobró la venta (venta.turno_id → turno.cajero_id).
  */
 @Service
 public class DashboardService {
@@ -72,21 +73,21 @@ public class DashboardService {
                 select coalesce(sum(d.importe), 0) as ingresos, count(distinct v.id) as ventas
                 from venta v join venta_detalle d on d.venta_id = v.id join producto p on p.id = d.producto_id
                 where v.estado = 'PAGADA' and v.fecha >= :desde and v.fecha < :hasta
-                  and (cast(:usuario as int) is null or v.cajero_id = :usuario)
+                  and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))
                   and (cast(:producto as int) is null or p.id = :producto)
                   and (cast(:tipo as varchar) is null or p.tipo = :tipo)"""
             : """
                 select coalesce(sum(v.total), 0) as ingresos, count(*) as ventas
                 from venta v
                 where v.estado = 'PAGADA' and v.fecha >= :desde and v.fecha < :hasta
-                  and (cast(:usuario as int) is null or v.cajero_id = :usuario)""";
+                  and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))""";
         var p = params(desde, hasta, f);
         Map<String, Object> fila = jdbc.queryForMap(sql, p);
         BigDecimal ingresos = (BigDecimal) fila.get("ingresos");
         long ventas = ((Number) fila.get("ventas")).longValue();
         BigDecimal devoluciones = porRenglon ? BigDecimal.ZERO : jdbc.queryForObject("""
                 select coalesce(sum(dv.monto), 0) from devolucion dv join venta v on v.id = dv.venta_id
-                where dv.fecha >= :desde and dv.fecha < :hasta and (cast(:usuario as int) is null or v.cajero_id = :usuario)""",
+                where dv.fecha >= :desde and dv.fecha < :hasta and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))""",
                 p, BigDecimal.class);
         BigDecimal neto = ingresos.subtract(devoluciones);
         BigDecimal promedio = ventas == 0 ? BigDecimal.ZERO : ingresos.divide(BigDecimal.valueOf(ventas), 2, java.math.RoundingMode.HALF_UP);
@@ -97,7 +98,7 @@ public class DashboardService {
         return jdbc.query("""
                 select cast(v.fecha as date) as dia, coalesce(sum(v.total), 0) as ingresos, count(*) as ventas
                 from venta v where v.estado = 'PAGADA' and v.fecha >= :desde and v.fecha < :hasta
-                  and (cast(:usuario as int) is null or v.cajero_id = :usuario)
+                  and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))
                 group by cast(v.fecha as date) order by dia""", params(f.desde(), f.hasta(), f),
                 (rs, i) -> new Punto(rs.getDate("dia").toLocalDate(), rs.getBigDecimal("ingresos"), rs.getLong("ventas")));
     }
@@ -107,7 +108,7 @@ public class DashboardService {
                 select pg.forma, coalesce(sum(pg.monto), 0) as importe, count(*) as cantidad
                 from pago pg join venta v on v.id = pg.venta_id
                 where v.estado = 'PAGADA' and v.fecha >= :desde and v.fecha < :hasta
-                  and (cast(:usuario as int) is null or v.cajero_id = :usuario)
+                  and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))
                 group by pg.forma order by importe desc""", params(f.desde(), f.hasta(), f),
                 (rs, i) -> new Etiquetado(rs.getString("forma"), rs.getBigDecimal("importe"), rs.getLong("cantidad")));
     }
@@ -117,7 +118,7 @@ public class DashboardService {
                 select p.id, p.nombre, p.tipo, sum(d.cantidad) as cantidad, sum(d.importe) as importe
                 from venta v join venta_detalle d on d.venta_id = v.id join producto p on p.id = d.producto_id
                 where v.estado = 'PAGADA' and v.fecha >= :desde and v.fecha < :hasta
-                  and (cast(:usuario as int) is null or v.cajero_id = :usuario)
+                  and (cast(:usuario as int) is null or exists (select 1 from turno tf where tf.id = v.turno_id and tf.cajero_id = :usuario))
                   and (cast(:producto as int) is null or p.id = :producto)
                   and (cast(:tipo as varchar) is null or p.tipo = :tipo)
                 group by p.id, p.nombre, p.tipo order by importe desc, cantidad desc limit 10""", params(f.desde(), f.hasta(), f),

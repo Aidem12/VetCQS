@@ -56,9 +56,10 @@ Base: origin/test/estabilizacion 25c9a57 + commits locales (sin push). Punto de 
 - Facturación: interfaz ServicioTimbrado + TimbradoDemostracion; aviso "no es CFDI timbrado por el SAT"; auditada.
 - Zona horaria del proceso fijada a America/Mexico_City (comun/ZonaHoraria).
 - Respaldo/restauración: herramientas/respaldar-bd.ps1 y restaurar-bd.ps1; pg_dump/pg_restore verificados en bases temporales del contenedor de pruebas (conteos iguales).
+### Hecho después
+- docs/verificacion-integral.md (134 aprobados, 0 fallidos, 22 bloqueados, 4 pendientes), docs/operacion-windows.md, docs/ITERACION-INTEGRAL.md (diagramas), docs/evidencias/pruebas-2026-11-18.md.
+- JaCoCo: líneas 82.2 %, ramas 56.5 %. La verificación encontró y se corrigieron 4 defectos (ver evidencias).
 ### Pendiente
-- docs/verificacion-integral.md (matriz 1-160), docs de operación Windows y diagramas, informe final.
-- Cobertura JaCoCo (perfil cobertura) en ejecución; anotar el número real.
 - Recorrido JavaFX contra backend real: no ejecutado (requiere autorización para actualizar el servidor Docker real o un servidor aparte).
 - Distribución de clientes sin Maven (jpackage): no implementado.
 ### Cómo continuar
