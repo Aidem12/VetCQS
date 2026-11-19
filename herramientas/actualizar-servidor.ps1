@@ -23,7 +23,7 @@ if ($LASTEXITCODE -ne 0) { throw 'No se pudo reconstruir el servidor. Revise el 
 for ($i = 0; $i -lt 45; $i++) {
     try {
         $healthVet = Invoke-RestMethod http://localhost:8080/api/salud -TimeoutSec 3
-        if ($healthVet.versionApi -eq 'estabilizacion-1') {
+        if ($healthVet.versionApi -eq 'integral-1') {
             Write-Host 'Servidor actualizado y conectado a PostgreSQL. Cierre las ventanas de VetCQS y abra el portal de nuevo.' -ForegroundColor Green
             exit 0
         }

@@ -35,6 +35,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(avisos, "/ws/caja")
+                .addInterceptors(new org.springframework.web.socket.server.support.HttpSessionHandshakeInterceptor())
                 .setAllowedOriginPatterns(allowedOrigin.split("\\s*,\\s*"));
     }
 
@@ -47,6 +48,26 @@ public class WebSocketConfig implements WebSocketConfigurer {
             cajas.add(session);
         }
 
+        /** Mensajes del cliente: solo se responde al latido para que Caja detecte conexiones muertas. */
+        @Override
+        protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
+            if ("ping".equals(message.getPayload())) session.sendMessage(new TextMessage("{\"tipo\":\"PONG\"}"));
+        }
+
+        /** Cierra los WebSocket abiertos con una sesión HTTP que ya terminó (logout, expiración o desactivación). */
+        public void cerrarSesion(String httpSessionId) {
+            for (WebSocketSession caja : cajas) {
+                Object id = caja.getAttributes().get(
+                        org.springframework.web.socket.server.support.HttpSessionHandshakeInterceptor.HTTP_SESSION_ID_ATTR_NAME);
+                if (httpSessionId != null && httpSessionId.equals(id)) {
+                    cajas.remove(caja);
+                    try { caja.close(CloseStatus.POLICY_VIOLATION.withReason("Sesión cerrada")); } catch (IOException ignored) { }
+                }
+            }
+        }
+
+        public int conectadas() { return cajas.size(); }
+
         @Override
         public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
             cajas.remove(session);
@@ -55,8 +76,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
         public void avisar(String json) {
             for (WebSocketSession caja : cajas) {
                 try {
-                    caja.sendMessage(new TextMessage(json));
-                } catch (IOException e) {
+                    synchronized (caja) { caja.sendMessage(new TextMessage(json)); }
+                } catch (IOException | IllegalStateException e) {
                     cajas.remove(caja);
                 }
             }

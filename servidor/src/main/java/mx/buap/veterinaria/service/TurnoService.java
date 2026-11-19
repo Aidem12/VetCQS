@@ -39,7 +39,13 @@ public class TurnoService {
  public List<SalidaEfectivo> salidas(Integer operador){return salidas.findByTurnoIdOrderByFecha(propioAbierto(operador).getId());}
  private BigDecimal retiros(Turno t){return salidas.findByTurnoIdOrderByFecha(t.getId()).stream().map(SalidaEfectivo::getMonto).reduce(BigDecimal.ZERO,BigDecimal::add);}
  private BigDecimal total(Turno t,Pago.Forma forma){return pagos.totalDelTurno(t.getId(),forma);}
- private BigDecimal esperado(Turno t){return t.getFondoInicial().add(total(t,Pago.Forma.EFECTIVO)).subtract(retiros(t));}
+ /** Reembolsos en efectivo del turno (devoluciones); se inyecta por método para conservar el constructor de pruebas. */
+ private mx.buap.veterinaria.devolucion.DevolucionRepository devoluciones;
+ @org.springframework.beans.factory.annotation.Autowired(required=false) public void setDevoluciones(mx.buap.veterinaria.devolucion.DevolucionRepository d){devoluciones=d;}
+ private BigDecimal reembolsosEfectivo(Turno t){return devoluciones==null?BigDecimal.ZERO:devoluciones.efectivoDelTurno(t.getId());}
+ private BigDecimal esperado(Turno t){return t.getFondoInicial().add(total(t,Pago.Forma.EFECTIVO)).subtract(retiros(t)).subtract(reembolsosEfectivo(t));}
+ /** Efectivo que debería haber en el cajón en este momento. */
+ public BigDecimal efectivoDisponible(Turno t){return esperado(t);}
  public Map<String,Object> cerrar(TurnoCierreRequest r,Integer operador){
   Turno t=propioAbierto(operador);
   if(r.denominaciones()!=null){
@@ -55,7 +61,7 @@ public class TurnoService {
   Map<String,Object> reporte=new LinkedHashMap<>(resumen(t));reporte.put("cierre",t.getCierre().toString());
   reporte.put("efectivoEsperado",esperado);reporte.put("efectivoContado",r.efectivoContado());reporte.put("diferencia",r.efectivoContado().subtract(esperado));
   reporte.put("ventasEfectivo",total(t,Pago.Forma.EFECTIVO));reporte.put("ventasTarjeta",total(t,Pago.Forma.TARJETA));reporte.put("ventasTransferencia",total(t,Pago.Forma.TRANSFERENCIA));
-  reporte.put("salidas",retiros(t));reporte.put("denominaciones",r.denominaciones()==null?Map.of():r.denominaciones());
+  reporte.put("salidas",retiros(t));reporte.put("reembolsosEfectivo",reembolsosEfectivo(t));reporte.put("denominaciones",r.denominaciones()==null?Map.of():r.denominaciones());
   reporte.put("tarjetaContada",r.tarjetaContada()==null?BigDecimal.ZERO:r.tarjetaContada());
   reporte.put("transferenciaContada",r.transferenciaContada()==null?BigDecimal.ZERO:r.transferenciaContada());
   reporte.put("transacciones",ventas.findByTurnoIdOrderByFecha(t.getId()).stream().map(v -> Map.of("folio",v.getFolio(),"estado",v.getEstado().name(),"total",v.getTotal())).toList());

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import java.util.List;
 import java.util.Optional;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -21,14 +22,22 @@ import mx.buap.veterinaria.model.*;
 import mx.buap.veterinaria.repository.*;
 
 @WebMvcTest({ClinicaController.class, ProductoController.class, AuthController.class})
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, mx.buap.veterinaria.seguridad.LimiteIntentos.class, mx.buap.veterinaria.comun.Reloj.class})
 class ClinicaFlowTest {
+    @Test void escrituraSinTokenCsrfSeRechaza() throws Exception {
+        mvc.perform(post("/api/clinica/duenos").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"nombre\":\"Tutor\",\"telefono\":\"2221234567\"}")).andExpect(status().isForbidden());
+        org.mockito.Mockito.verify(duenos, org.mockito.Mockito.never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
     @Autowired MockMvc mvc;
     @MockitoBean DuenoRepository duenos;
     @MockitoBean MascotaRepository mascotas;
     @MockitoBean ConsultaRepository consultas;
     @MockitoBean UsuarioRepository usuarios;
     @MockitoBean ProductoRepository productos;
+    @MockitoBean mx.buap.veterinaria.comun.AuditoriaService auditoria;
+    @MockitoBean mx.buap.veterinaria.seguridad.SesionesActivas sesiones;
 
     private MockHttpSession session(String role) {
         Usuario u = usuarios.findById(42).orElseGet(Usuario::new); u.setActivo(true); u.setRol(Usuario.Rol.valueOf(role));
@@ -47,29 +56,30 @@ class ClinicaFlowTest {
     }
     @Test void desactivarUsuarioInvalidaSesionExistente() throws Exception {
         var s=session("ADMINISTRADOR"); usuarios.findById(42).orElseThrow().setActivo(false);
-        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isUnauthorized());
         assertTrue(s.isInvalid());
     }
     @Test void cambiarRolInvalidaSesionExistente() throws Exception {
         var s=session("ADMINISTRADOR"); usuarios.findById(42).orElseThrow().setRol(Usuario.Rol.CAJERO);
-        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/productos/catalogo").session(s)).andExpect(status().isUnauthorized());
         assertTrue(s.isInvalid());
     }
     @Test void usuarioInexistenteYSesionAusenteNoAcceden() throws Exception {
         var s=session("ADMINISTRADOR"); when(usuarios.findById(42)).thenReturn(Optional.empty());
-        mvc.perform(get("/api/productos").session(s)).andExpect(status().isForbidden());
-        mvc.perform(get("/api/productos")).andExpect(status().isForbidden());
+        // Sin sesión válida: 401 (inicie sesión). Con sesión pero sin permiso: 403.
+        mvc.perform(get("/api/productos").session(s)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/productos")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/auth/sesion")).andExpect(status().isUnauthorized());
     }
     @Test void registraDuenoYVinculaMascota() throws Exception {
         when(duenos.save(any())).thenAnswer(i -> i.getArgument(0));
-        mvc.perform(post("/api/clinica/duenos").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/clinica/duenos").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"nombre\":\"Ana\",\"telefono\":\"2221234567\",\"correo\":\"ana@example.com\",\"direccion\":\"Centro\"}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.nombre").value("Ana")).andExpect(jsonPath("$.direccion").value("Centro"));
         Dueno owner = new Dueno(); owner.setNombre("Ana"); when(duenos.findById(7)).thenReturn(Optional.of(owner));
         when(mascotas.save(any())).thenAnswer(i -> { Mascota m=i.getArgument(0); assertSame(owner,m.getDueno()); return m; });
         for (String especie : List.of("Perro","Gato","Pez","Pájaro")) {
-            mvc.perform(post("/api/clinica/duenos/7/mascotas").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+            mvc.perform(post("/api/clinica/duenos/7/mascotas").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
                     .content("{\"nombre\":\"Paciente\",\"especie\":\""+especie+"\",\"sexo\":\"H\",\"pesoKg\":2.5}"))
                     .andExpect(status().isCreated()).andExpect(jsonPath("$.especie").value(especie));
         }
@@ -83,7 +93,7 @@ class ClinicaFlowTest {
             Consulta c=i.getArgument(0); assertSame(patient,c.getMascota()); assertSame(owner,c.getMascota().getDueno()); assertSame(vet,c.getVeterinario());
             when(consultas.findByMascotaIdOrderByFechaDesc(9)).thenReturn(List.of(c)); return c;
         });
-        mvc.perform(post("/api/clinica/consultas").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/clinica/consultas").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mascotaId\":9,\"veterinarioId\":999,\"motivo\":\"Revisión\",\"diagnostico\":\"Paciente estable\",\"tratamiento\":\"Control en 7 días\",\"pesoKg\":2.5,\"temperaturaC\":38.2}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.diagnostico").value("Paciente estable"));
         verify(usuarios,never()).findById(999);
@@ -97,7 +107,7 @@ class ClinicaFlowTest {
         Producto p=new Producto(); p.setNombre("Vacuna"); p.setStockActual(new java.math.BigDecimal("8"));
         when(productos.findTop20ByNombreContainingIgnoreCaseAndActivoTrueOrderByNombre("Vacuna")).thenReturn(List.of(p));
         mvc.perform(get("/api/productos?q=Vacuna").session(session("VETERINARIO"))).andExpect(status().isOk()).andExpect(jsonPath("$[0].stockActual").value(8));
-        mvc.perform(post("/api/productos").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mvc.perform(post("/api/productos").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/clinica/duenos").session(session("CAJERO"))).andExpect(status().isForbidden());
     }
@@ -105,15 +115,15 @@ class ClinicaFlowTest {
     @Test void cerrarSesionInvalidaSesionDeCadaRol() throws Exception {
         for (String role:List.of("ADMINISTRADOR","CAJERO","VETERINARIO")) {
             MockHttpSession s=session(role);
-            mvc.perform(post("/api/auth/logout").session(s)).andExpect(status().isNoContent()); assertTrue(s.isInvalid());
+            mvc.perform(post("/api/auth/logout").with(csrf()).session(s)).andExpect(status().isNoContent()); assertTrue(s.isInvalid());
         }
-        mvc.perform(get("/api/productos")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/productos")).andExpect(status().isUnauthorized());
     }
 
     @Test void rechazaConsultaSinMotivoYMascotaSinDuenoExistente() throws Exception {
-        mvc.perform(post("/api/clinica/consultas").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/clinica/consultas").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"mascotaId\":9,\"motivo\":\" \"}")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/clinica/duenos/404/mascotas").session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
+        mvc.perform(post("/api/clinica/duenos/404/mascotas").with(csrf()).session(session("VETERINARIO")).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"nombre\":\"Luna\",\"especie\":\"Gato\"}")).andExpect(status().isNotFound());
     }
 }

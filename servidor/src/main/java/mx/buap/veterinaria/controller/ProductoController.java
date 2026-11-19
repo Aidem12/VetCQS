@@ -55,6 +55,9 @@ public class ProductoController {
     public Producto crear(@Valid @RequestBody ProductoRequest request) {
         Producto producto = new Producto();
         copiar(request, producto);
+        if (producto.isManejaCaducidad() && producto.getStockActual().signum() > 0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Un producto con caducidad inicia sin existencia: registre la primera compra con su lote en Farmacia.");
         return productos.save(producto);
     }
 
@@ -65,7 +68,11 @@ public class ProductoController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
         // Iteración 3: la existencia solo cambia con entradas, ventas o ajustes, para que todo quede en el kardex.
         java.math.BigDecimal existencia = producto.getStockActual();
+        boolean manejabaCaducidad = producto.isManejaCaducidad();
         copiar(request, producto);
+        if (manejabaCaducidad != producto.isManejaCaducidad() && existencia.signum() > 0)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "No se puede cambiar el manejo de caducidad mientras el producto tenga existencia.");
         producto.setStockActual(existencia);
         return productos.save(producto);
     }
@@ -78,6 +85,30 @@ public class ProductoController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
         producto.setActivo(false);
         productos.save(producto);
+    }
+
+    @PutMapping("/{id}/activar")
+    public Producto activar(@PathVariable Integer id) {
+        Producto producto = productos.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+        producto.setActivo(true);
+        return productos.save(producto);
+    }
+
+    /** Borra el producto solo si nunca se ha vendido ni movido en inventario; si no, debe desactivarse. */
+    @DeleteMapping("/{id}/definitivo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void eliminar(@PathVariable Integer id) {
+        Producto producto = productos.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Producto no encontrado"));
+        try {
+            productos.delete(producto);
+            productos.flush();
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, producto.getNombre()
+                    + " ya tiene ventas o movimientos de inventario. Para no perder ese historial no se puede borrar; "
+                    + "use Desactivar producto.");
+        }
     }
 
     private static void copiar(ProductoRequest request, Producto producto) {

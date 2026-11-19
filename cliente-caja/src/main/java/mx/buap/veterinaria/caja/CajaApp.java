@@ -48,9 +48,10 @@ import javafx.stage.Window;
 public class CajaApp extends Application {
 
     static final String SERVIDOR = System.getProperty("servidor", "http://localhost:8080");
-    private static final String NOMBRE_NEGOCIO = "VetCQS";
-    private static final String DIRECCION_SUCURSAL =
-            "Sucursal Puebla 11 Sur\nAv 11 Sur 12914 GPE HIDALGO Puebla, PUE.";
+    /** Datos del ticket: se reemplazan con la configuración del servidor (/api/config/negocio) al iniciar. */
+    private String nombreNegocio = "VetCQS";
+    private String datosSucursal = "Sucursal Puebla 11 Sur\nAv 11 Sur 12914 GPE HIDALGO Puebla, PUE.";
+    private String leyendaTicket = "Gracias por su compra";
     private static final String CAJA = "Caja 1";
     private String atendio = "Cajero";
     private static final DateTimeFormatter FORMATO_FECHA_TICKET =
@@ -69,6 +70,10 @@ public class CajaApp extends Application {
     private String ultimoMetodo="Efectivo";
     private BigDecimal descuentoActual=BigDecimal.ZERO;
     private final Label clienteVenta = new Label("Venta de mostrador");
+    /** Avisos en tiempo real de Consultorio (precuentas nuevas). */
+    private CanalAvisos canalAvisos;
+    private final Button avisoPrecuentas = new Button();
+    private int precuentasNuevas;
     private static final List<ProductoTemporal> PRODUCTOS_DE_PRUEBA = List.of(
             new ProductoTemporal(101, "7501000000011", "Croquetas adulto 2 kg", new BigDecimal("389.00"), new BigDecimal("2")),
             new ProductoTemporal(102, "7501000000028", "Desparasitante, tableta", new BigDecimal("45.00"), new BigDecimal("40")),
@@ -84,6 +89,7 @@ public class CajaApp extends Application {
         java.net.CookieHandler.setDefault(cookies);
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).cookieHandler(cookies).build();
         String sesion = System.getProperty("sesion", "");
+        if (sesion.isBlank() && System.getenv("VETCQS_SESION") != null) sesion = System.getenv("VETCQS_SESION");
         if (!sesion.isBlank()) {
             try {
                 HttpCookie cookie = HttpCookie.parse(sesion).get(0);
@@ -111,7 +117,10 @@ public class CajaApp extends Application {
             }
             ventanaPrincipal.close();
         });
-        HBox barraSuperior = new HBox(20, identidad, espacio(), estadoServidor, panel, cerrarSesion);
+        avisoPrecuentas.getStyleClass().add("notice-button");
+        avisoPrecuentas.setVisible(false); avisoPrecuentas.setManaged(false);
+        avisoPrecuentas.setOnAction(e -> { limpiarAvisos(); cargarPrecuenta(); });
+        HBox barraSuperior = new HBox(20, identidad, espacio(), avisoPrecuentas, estadoServidor, panel, cerrarSesion);
         barraSuperior.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         barraSuperior.getStyleClass().add("header");
 
@@ -170,7 +179,8 @@ public class CajaApp extends Application {
         Button agregarBtn = new Button("Agregar · Enter"); agregarBtn.getStyleClass().add("primary");agregarBtn.setOnAction(e -> buscar(captura));
         HBox.setHgrow(captura,Priority.ALWAYS);
         Button autorizar=new Button("Autorización administrativa");autorizar.setOnAction(e -> autorizarVenta());
-        VBox centro = new VBox(12, new HBox(8,precuentas,autorizar), new HBox(8,captura,agregarBtn), tabla, clienteVenta);
+        Button devolver=new Button("F6 · Devolución");devolver.setOnAction(e -> devoluciones());
+        VBox centro = new VBox(12, new HBox(8,precuentas,autorizar,devolver), new HBox(8,captura,agregarBtn), tabla, clienteVenta);
         VBox.setVgrow(tabla, Priority.ALWAYS);
         centro.setPadding(new Insets(18, 12, 12, 18));
         Label atajos = new Label("F1  Precuenta     F2  Buscar producto     F4  Inventario     F5  Cobrar     ENTER  Agregar     SUPR  Quitar renglón");
@@ -188,6 +198,7 @@ public class CajaApp extends Application {
             if(e.getCode()==KeyCode.F5){cobrar();e.consume();}
             if(e.getCode()==KeyCode.F2){captura.requestFocus();captura.selectAll();e.consume();}
             if(e.getCode()==KeyCode.F4){revisarInventario();e.consume();}
+            if(e.getCode()==KeyCode.F6){devoluciones();e.consume();}
             if (e.getCode() == javafx.scene.input.KeyCode.DELETE && !(e.getTarget() instanceof javafx.scene.control.TextInputControl)) {
                 eliminarSeleccionado();
             }
@@ -204,11 +215,52 @@ public class CajaApp extends Application {
                 boolean admin = "ADMINISTRADOR".equals(sesionActual.path("rol").asText());
                 panel.setVisible(admin); panel.setManaged(admin);
                 atendio=sesionActual.path("nombre").asText("Cajero");encabezado.setText("Punto de venta / Caja · "+atendio);}catch(Exception ignored){}
+            if(r.statusCode()==200) { iniciarAvisos(); cargarNegocio(); }
         }));
+        ventana.setOnHidden(e -> { if (canalAvisos != null) canalAvisos.detener(); });
+    }
+
+    private void cargarNegocio() {
+        request("GET", "/api/config/negocio", null).thenAccept(r -> Platform.runLater(() -> {
+            if (r.statusCode() != 200) return;
+            try {
+                JsonNode n = json.readTree(r.body());
+                if (!n.path("nombre").asText().isBlank()) nombreNegocio = n.path("nombre").asText();
+                StringBuilder d = new StringBuilder();
+                for (String campo : List.of("direccion", "telefono")) if (!n.path(campo).asText().isBlank()) d.append(d.length() == 0 ? "" : "\n").append(campo.equals("telefono") ? "Tel. " : "").append(n.path(campo).asText());
+                if (!n.path("rfc").asText().isBlank()) d.append("\nRFC: ").append(n.path("rfc").asText());
+                if (d.length() > 0) datosSucursal = d.toString();
+                if (!n.path("leyenda").asText().isBlank()) leyendaTicket = n.path("leyenda").asText();
+            } catch (Exception ignorada) { /* se conservan los datos predeterminados */ }
+        }));
+    }
+
+    private void devoluciones() {
+        new DevolucionesView(http, ventanaPrincipal, nombreNegocio + "\n" + datosSucursal + "\n" + CAJA + " · Atendió: " + atendio).mostrar();
+    }
+
+    private void iniciarAvisos() {
+        if (canalAvisos != null) return;
+        canalAvisos = new CanalAvisos(http, SERVIDOR,
+                aviso -> Platform.runLater(() -> {
+                    precuentasNuevas++;
+                    avisoPrecuentas.setText("● " + precuentasNuevas + (precuentasNuevas == 1 ? " precuenta nueva" : " precuentas nuevas") + " · F1");
+                    avisoPrecuentas.setTooltip(new javafx.scene.control.Tooltip(aviso.path("mensaje").asText()));
+                    avisoPrecuentas.setVisible(true); avisoPrecuentas.setManaged(true);
+                }),
+                conectado -> Platform.runLater(() -> estadoServidor.setTooltip(new javafx.scene.control.Tooltip(
+                        conectado ? "Avisos de Consultorio en tiempo real: conectado" : "Avisos de Consultorio: reconectando..."))));
+        canalAvisos.iniciar();
+    }
+
+    private void limpiarAvisos() {
+        precuentasNuevas = 0;
+        avisoPrecuentas.setVisible(false); avisoPrecuentas.setManaged(false);
     }
 
     private void cerrarSesion() {
         ventanaPrincipal.getScene().getRoot().setDisable(true);
+        if (canalAvisos != null) canalAvisos.detener();
         request("POST", "/api/auth/logout", "").whenComplete((r, error) -> Platform.runLater(() -> {
             http.cookieHandler().filter(CookieManager.class::isInstance)
                     .map(CookieManager.class::cast).ifPresent(c -> c.getCookieStore().removeAll());
@@ -504,11 +556,11 @@ public class CajaApp extends Application {
         ticket.setPadding(new Insets(18));
         ticket.setStyle("-fx-background-color: white; -fx-border-color: #D7E0E8;");
 
-        Label negocio = new Label(NOMBRE_NEGOCIO);
+        Label negocio = new Label(nombreNegocio);
         negocio.setMaxWidth(Double.MAX_VALUE);
         negocio.setAlignment(javafx.geometry.Pos.CENTER);
         negocio.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #17324D;");
-        Label datos = new Label(DIRECCION_SUCURSAL + "\n" + CAJA
+        Label datos = new Label(datosSucursal + "\n" + CAJA
                 + "\nAtendió: " + atendio
                 + "\nFecha: " + LocalDateTime.now().format(FORMATO_FECHA_TICKET)
                 + "\nFolio: " + folio + "\nPago: " + ultimoMetodo);
@@ -529,7 +581,8 @@ public class CajaApp extends Application {
                 lineaTicket("TOTAL", importe),
                 lineaTicket("RECIBIDO", efectivo),
                 lineaTicket("CAMBIO", efectivo.subtract(importe)));
-        Label agradecimiento = new Label("Gracias por su compra");
+        Label agradecimiento = new Label(leyendaTicket);
+        agradecimiento.setWrapText(true);
         agradecimiento.setMaxWidth(Double.MAX_VALUE);
         agradecimiento.setAlignment(javafx.geometry.Pos.CENTER);
         agradecimiento.setStyle("-fx-font-size: 12px; -fx-text-fill: #21865B;");
@@ -750,6 +803,7 @@ public class CajaApp extends Application {
             String metodo, String ruta, String cuerpo) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(SERVIDOR + ruta))
                 .timeout(Duration.ofSeconds(10)).header("Content-Type", "application/json");
+        Csrf.aplicar(http, SERVIDOR, metodo, builder);
         if ("POST".equals(metodo)) builder.POST(HttpRequest.BodyPublishers.ofString(cuerpo));
         else builder.GET();
         return http.sendAsync(builder.build(), HttpResponse.BodyHandlers.ofString());

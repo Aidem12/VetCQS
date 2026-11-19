@@ -30,6 +30,8 @@ public class Factura {
  public java.util.UUID getUuidSat(){return uuidSat;} public void setUuidSat(java.util.UUID v){uuidSat=v;}
  public String getXml(){return xml;} public void setXml(String v){xml=v;}
  public LocalDateTime getFechaSolicitud(){return fechaSolicitud;}
+ /** Leyenda obligatoria: el módulo de facturación es simulado y no se comunica con un PAC ni con el SAT. */
+ public String getAviso(){return mock ? "Factura de DEMOSTRACIÓN: no es un CFDI timbrado por el SAT ni tiene validez fiscal. El UUID es simulado." : null;}
  public boolean isMock(){return mock;} public void setMock(boolean v){mock=v;}
  public String getIdempotencia(){return idempotencia;} public void setIdempotencia(String v){idempotencia=v;}
  public String getRespuestaMock(){return respuestaMock;} public void setRespuestaMock(String v){respuestaMock=v;}

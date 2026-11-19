@@ -40,6 +40,8 @@ public class Producto {
 
     @Column(name = "maneja_caducidad", nullable = false)
     private boolean manejaCaducidad;
+    @Column(name = "costo_ultimo", precision = 10, scale = 2)
+    private BigDecimal costoUltimo;
 
     @Column(nullable = false)
     private boolean activo = true;
@@ -72,4 +74,6 @@ public class Producto {
             codigoBarras = null;
         }
     }
+    public BigDecimal getCostoUltimo() { return costoUltimo; }
+    public void setCostoUltimo(BigDecimal costoUltimo) { this.costoUltimo = costoUltimo; }
 }

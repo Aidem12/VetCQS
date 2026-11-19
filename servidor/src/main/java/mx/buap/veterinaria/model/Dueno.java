@@ -21,6 +21,10 @@ public class Dueno {
     private String correo;
     @Column(length = 200)
     private String direccion;
+    @Column(name = "telefono_alterno", length = 20)
+    private String telefonoAlterno;
+    @Column(length = 500)
+    private String notas;
 
     public Integer getId() { return id; }
     public String getNombre() { return nombre; }
@@ -31,4 +35,8 @@ public class Dueno {
     public void setCorreo(String correo) { this.correo = correo; }
     public String getDireccion() { return direccion; }
     public void setDireccion(String direccion) { this.direccion = direccion; }
+    public String getTelefonoAlterno() { return telefonoAlterno; }
+    public void setTelefonoAlterno(String telefonoAlterno) { this.telefonoAlterno = telefonoAlterno; }
+    public String getNotas() { return notas; }
+    public void setNotas(String notas) { this.notas = notas; }
 }

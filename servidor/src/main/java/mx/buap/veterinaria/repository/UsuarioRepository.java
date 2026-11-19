@@ -8,4 +8,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
     java.util.Optional<Usuario> findByUsuarioAndActivoTrue(String usuario);
     Optional<Usuario> findByUsuario(String usuario);
     Optional<Usuario> findFirstByRolAndActivoTrue(Usuario.Rol rol);
+    long countByRolAndActivoTrue(Usuario.Rol rol);
 }

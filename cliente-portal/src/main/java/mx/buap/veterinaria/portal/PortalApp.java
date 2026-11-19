@@ -156,8 +156,10 @@ public class PortalApp extends Application {
             boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
             Path maven = Path.of(System.getProperty("user.home"), "Tools", "apache-maven-3.10.0", "bin", windows ? "mvn.cmd" : "mvn");
             String ejecutable = Files.exists(maven) ? maven.toString() : (windows ? "mvn.cmd" : "mvn");
-            ProcessBuilder proceso = new ProcessBuilder(ejecutable, "javafx:run", "-Dservidor=" + SERVER,
-                    "-Dsesion=" + cookie);
+            // La cookie de sesión viaja en una variable de entorno del proceso hijo y no en la línea de comandos,
+            // para que no aparezca en el listado de procesos del equipo.
+            ProcessBuilder proceso = new ProcessBuilder(ejecutable, "javafx:run", "-Dservidor=" + SERVER);
+            proceso.environment().put("VETCQS_SESION", cookie);
             proceso.directory(raiz.resolve(modulo).toFile());
             cliente = iniciarProceso(proceso);
             stage.hide();
@@ -194,6 +196,7 @@ public class PortalApp extends Application {
         try {
             HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVER + path))
                     .timeout(Duration.ofSeconds(8)).header("Content-Type","application/json");
+            Csrf.aplicar(http, SERVER, method, b);
             return http.sendAsync(method.equals("GET") ? b.GET().build() : b.method(method, HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString())
                     .exceptionally(ignored -> HttpResponseStub.error());
         } catch (Exception e) { error.setText("No se pudo conectar al servidor."); return CompletableFuture.completedFuture(HttpResponseStub.error()); }

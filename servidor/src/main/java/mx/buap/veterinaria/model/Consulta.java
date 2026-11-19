@@ -29,6 +29,14 @@ public class Consulta {
     private String diagnostico;
     @Column(columnDefinition = "TEXT")
     private String tratamiento;
+    @Column(name = "frecuencia_cardiaca")
+    private Integer frecuenciaCardiaca;
+    @Column(name = "frecuencia_respiratoria")
+    private Integer frecuenciaRespiratoria;
+    @Column(name = "condicion_corporal")
+    private Short condicionCorporal;
+    @Column(columnDefinition = "TEXT")
+    private String evolucion;
 
     public Integer getId() { return id; }
     public Mascota getMascota() { return mascota; }
@@ -46,4 +54,12 @@ public class Consulta {
     public void setDiagnostico(String diagnostico) { this.diagnostico = diagnostico; }
     public String getTratamiento() { return tratamiento; }
     public void setTratamiento(String tratamiento) { this.tratamiento = tratamiento; }
+    public Integer getFrecuenciaCardiaca() { return frecuenciaCardiaca; }
+    public void setFrecuenciaCardiaca(Integer v) { this.frecuenciaCardiaca = v; }
+    public Integer getFrecuenciaRespiratoria() { return frecuenciaRespiratoria; }
+    public void setFrecuenciaRespiratoria(Integer v) { this.frecuenciaRespiratoria = v; }
+    public Short getCondicionCorporal() { return condicionCorporal; }
+    public void setCondicionCorporal(Short v) { this.condicionCorporal = v; }
+    public String getEvolucion() { return evolucion; }
+    public void setEvolucion(String evolucion) { this.evolucion = evolucion; }
 }

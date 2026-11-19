@@ -46,6 +46,8 @@ public class ConsultorioApp extends Application {
     private final TextField cantidad = new TextField("1");
     private final Button guardar = new Button("Guardar consulta · Ctrl+S");
     private final Button nuevaMascota = new Button("Registrar mascota");
+    private final Button expediente = new Button("Expediente completo");
+    private Api apiVentanas;
     private Stage ventanaPrincipal;
     private JsonNode duenoSeleccionado;
     private JsonNode mascotaSeleccionada;
@@ -57,6 +59,7 @@ public class ConsultorioApp extends Application {
 
     public ConsultorioApp() {
         String sesion = System.getProperty("sesion", "");
+        if (sesion.isBlank() && System.getenv("VETCQS_SESION") != null) sesion = System.getenv("VETCQS_SESION");
         if (!sesion.isBlank()) {
             try {
                 HttpCookie cookie = HttpCookie.parse(sesion).get(0);
@@ -74,6 +77,8 @@ public class ConsultorioApp extends Application {
         Label subtitulo = new Label("Atención médica  /  Consultorio"); subtitulo.getStyleClass().add("subtitle");
         estado.getStyleClass().add("connection-status");
         Button inventario = new Button("Revisar inventario · F4"); inventario.setOnAction(e -> revisarInventario());
+        apiVentanas = new Api(http, SERVIDOR);
+        Button agenda = new Button("Agenda · F3"); agenda.setOnAction(e -> abrirAgenda());
         Button salir = new Button("Cerrar sesión"); salir.getStyleClass().add("logout"); salir.setOnAction(e -> cerrarSesion());
         Region espacio = new Region(); HBox.setHgrow(espacio, Priority.ALWAYS);
         Button panel = new Button("Volver al panel"); panel.setVisible(false); panel.setManaged(false);
@@ -85,7 +90,7 @@ public class ConsultorioApp extends Application {
             }
             cerrandoSesion = true; ventanaPrincipal.close();
         });
-        HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, inventario, panel, salir);
+        HBox barra = new HBox(12, new VBox(2, marca, subtitulo), espacio, estado, agenda, inventario, panel, salir);
         barra.setAlignment(javafx.geometry.Pos.CENTER_LEFT); barra.getStyleClass().add("header");
 
         buscar.setId("buscar-dueno"); buscar.setPromptText("Nombre o teléfono"); buscar.setMinWidth(0);
@@ -109,7 +114,8 @@ public class ConsultorioApp extends Application {
         ver.disableProperty().bind(historial.getSelectionModel().selectedItemProperty().isNull());
         for (Label label : new Label[]{datosDueno, datosMascota, paciente, aviso}) { label.setWrapText(true); label.setMinHeight(Region.USE_PREF_SIZE); label.setMaxWidth(Double.MAX_VALUE); label.getStyleClass().add("muted"); }
         VBox panelDuenos = panel("DUEÑOS", new HBox(8, buscar, buscarBtn), nuevoDueno, duenos, datosDueno);
-        VBox panelMascotas = panel("MASCOTAS", nuevaMascota, mascotas, datosMascota);
+        expediente.setDisable(true); expediente.setOnAction(e -> abrirExpediente());
+        VBox panelMascotas = panel("MASCOTAS", new HBox(8, nuevaMascota, expediente), mascotas, datosMascota);
         VBox panelHistorial = panel("HISTORIAL CLÍNICO", historial, ver);
 
         motivo.setId("motivo"); peso.setId("peso"); temperatura.setId("temperatura");
@@ -162,6 +168,7 @@ public class ConsultorioApp extends Application {
         escena.setOnKeyPressed(e -> {
             if (e.getCode() == javafx.scene.input.KeyCode.F2) { buscar.requestFocus(); buscar.selectAll(); e.consume(); }
             else if (e.getCode() == javafx.scene.input.KeyCode.F4) { revisarInventario(); e.consume(); }
+            else if (e.getCode() == javafx.scene.input.KeyCode.F3) { abrirAgenda(); e.consume(); }
             else if (e.getCode() == javafx.scene.input.KeyCode.F10) { if (!enviar.isDisabled()) enviar.fire(); e.consume(); }
             else if (e.isShortcutDown() && e.getCode() == javafx.scene.input.KeyCode.S) { if (!guardar.isDisabled()) guardar.fire(); e.consume(); }
         });
@@ -175,6 +182,13 @@ public class ConsultorioApp extends Application {
         api("GET", "/api/salud", null, n -> {estado.setText("Servidor: conectado");estado.getStyleClass().add("connected");}, e -> {estado.setText("Servidor: sin conexión");estado.getStyleClass().add("disconnected");});
         api("GET", "/api/productos", null, n -> {n.forEach(p -> {catalogoPrecuenta.put(id(p),p);selectorProducto.getItems().add(p);});detalles.refresh();}, this::error);
         buscarDuenos();
+    }
+
+    private void abrirAgenda() { new AgendaView(apiVentanas, ventanaPrincipal, mascotaSeleccionada, tema()).mostrar(); }
+
+    private void abrirExpediente() {
+        if (mascotaSeleccionada == null) return;
+        new ExpedienteView(apiVentanas, ventanaPrincipal, id(mascotaSeleccionada), texto(mascotaSeleccionada, "nombre"), tema()).mostrar();
     }
 
     private void buscarDuenos() {
@@ -202,7 +216,7 @@ public class ConsultorioApp extends Application {
     private void seleccionarMascota(JsonNode mascota) {
         mascotaSeleccionada = mascota; historialVersion++;
         historial.getItems().clear(); consultaSeleccionada = null; detalles.getItems().clear(); limpiarConsulta();
-        guardar.setDisable(mascota == null);
+        guardar.setDisable(mascota == null); expediente.setDisable(mascota == null);
         datosMascota.setText(mascota == null ? "" : "Especie: " + texto(mascota,"especie") + " · Raza: " + texto(mascota,"raza")
                 + "\nSexo: " + texto(mascota,"sexo") + " · Peso: " + texto(mascota,"pesoKg") + " kg");
         paciente.setText(mascota == null ? "Seleccione un dueño y su mascota." :
@@ -354,8 +368,8 @@ public class ConsultorioApp extends Application {
 
     private void cerrarSesion() {
         cerrandoSesion = true; ventanaPrincipal.getScene().getRoot().setDisable(true);
-        HttpRequest request = HttpRequest.newBuilder(URI.create(SERVIDOR + "/api/auth/logout"))
-                .timeout(Duration.ofSeconds(8)).POST(HttpRequest.BodyPublishers.noBody()).build();
+        HttpRequest request = Csrf.aplicar(http, SERVIDOR, "POST", HttpRequest.newBuilder(URI.create(SERVIDOR + "/api/auth/logout"))
+                .timeout(Duration.ofSeconds(8))).POST(HttpRequest.BodyPublishers.noBody()).build();
         http.sendAsync(request,HttpResponse.BodyHandlers.discarding()).whenComplete((r,e) -> Platform.runLater(() -> {
             cookies.getCookieStore().removeAll(); ventanaPrincipal.close();
         }));
@@ -363,6 +377,7 @@ public class ConsultorioApp extends Application {
 
     private void api(String metodo, String ruta, JsonNode body, Consumer<JsonNode> success, Consumer<String> failure) {
         HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(SERVIDOR + ruta)).timeout(Duration.ofSeconds(10)).header("Content-Type","application/json");
+        Csrf.aplicar(http, SERVIDOR, metodo, b);
         HttpRequest request = "POST".equals(metodo) ? b.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build() : b.GET().build();
         http.sendAsync(request,HttpResponse.BodyHandlers.ofString()).whenComplete((r,ex) -> Platform.runLater(() -> {
             if (cerrandoSesion) return;

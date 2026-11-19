@@ -150,6 +150,7 @@ public class FlujoClinicoTest {
         @Override protected Process iniciarProceso(ProcessBuilder builder) {
             requestedModule=builder.directory().getName();
             for(String option:builder.command()) if(option.startsWith("-Dsesion=")) System.setProperty("sesion",option.substring(9));
+            if(builder.environment().get("VETCQS_SESION")!=null) System.setProperty("sesion",builder.environment().get("VETCQS_SESION"));
             TestProcess process=new TestProcess(); workStage=new Stage();
             if(requestedModule.equals("cliente-caja")) new CajaApp().start(workStage); else new ConsultorioApp().start(workStage);
             workStage.setOnHidden(e -> process.done.complete(process)); return process;
