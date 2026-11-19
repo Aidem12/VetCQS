@@ -9,7 +9,7 @@ public class TratamientoPreventivo implements Anulable {
     public enum Tipo { DESPARASITACION_INTERNA, DESPARASITACION_EXTERNA, OTRO }
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Integer id;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "mascota_id") private Mascota mascota;
-    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 20) private Tipo tipo;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 30) private Tipo tipo;
     @Column(nullable = false, length = 120) private String producto;
     @Column(length = 60) private String dosis;
     @Column(name = "fecha_aplicacion", nullable = false) private LocalDate fechaAplicacion;

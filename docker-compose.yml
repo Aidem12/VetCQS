@@ -38,6 +38,13 @@ services:
       APP_BOOTSTRAP_ADMIN_PASSWORD: ${APP_BOOTSTRAP_ADMIN_PASSWORD:-}
       APP_BOOTSTRAP_ADMIN_USERNAME: ${APP_BOOTSTRAP_ADMIN_USERNAME:-admin}
       APP_BOOTSTRAP_ADMIN_NAME: ${APP_BOOTSTRAP_ADMIN_NAME:-Administrador}
+      # Datos del negocio para tickets, recetas y reportes (opcionales)
+      NEGOCIO_NOMBRE: ${NEGOCIO_NOMBRE:-Clínica Veterinaria}
+      NEGOCIO_DIRECCION: ${NEGOCIO_DIRECCION:-}
+      NEGOCIO_TELEFONO: ${NEGOCIO_TELEFONO:-}
+      NEGOCIO_RFC: ${NEGOCIO_RFC:-}
+      NEGOCIO_LEYENDA: ${NEGOCIO_LEYENDA:-Gracias por su preferencia}
+      SESSION_TIMEOUT: ${SESSION_TIMEOUT:-60m}
       TZ: America/Mexico_City
     ports:
       - "8080:8080"                              # caja y consultorio se conectan aquí

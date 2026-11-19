@@ -114,6 +114,12 @@ class IntegralPostgresTest {
         for (var e : Map.of("int_vet", "VETERINARIO", "int_caja", "CAJERO").entrySet())
             request(admin, "POST", "/api/empleados", Map.of("nombre", e.getKey(), "usuario", e.getKey(), "contrasena", password, "rol", e.getValue()), 201);
         var vet = login("int_vet"); var caja = login("int_caja");
+        var empleados = raw(admin, "GET", "/api/empleados", null);
+        String textoEmpleados = new String(empleados.body(), StandardCharsets.UTF_8);
+        assertFalse(textoEmpleados.contains("contrasena") || textoEmpleados.contains("$2a$"), "No se exponen contraseñas ni hashes");
+        assertEquals("DENY", empleados.headers().firstValue("X-Frame-Options").orElse(""));
+        assertTrue(empleados.headers().firstValue("Content-Security-Policy").orElse("").contains("default-src 'none'"));
+        assertEquals("nosniff", empleados.headers().firstValue("X-Content-Type-Options").orElse(""));
         int vetId = request(vet, "GET", "/api/auth/sesion", null, 200).path("id").asInt();
 
         // ---------- Roles: sin sesión 401, sin permiso 403.
@@ -152,6 +158,20 @@ class IntegralPostgresTest {
         request(vet, "PUT", "/api/agenda/citas/" + cita10 + "/estado", Map.of("estado", "CANCELADA", "motivo", "El tutor reprogramará"), 200);
         request(vet, "POST", "/api/agenda/citas", cita.apply("10:00"), 201);           // el espacio cancelado se libera
         assertTrue(request(vet, "GET", "/api/agenda/citas/" + cita10 + "/historial", null, 200).size() >= 2);
+        String rango = "/api/agenda/citas?desde=" + manana + "&hasta=" + manana;
+        assertEquals(3, request(vet, "GET", rango, null, 200).size());
+        assertEquals(1, request(vet, "GET", rango + "&estado=CANCELADA", null, 200).size());
+        assertEquals(3, request(vet, "GET", rango + "&veterinarioId=" + vetId + "&q=Firulais", null, 200).size());
+        assertEquals(0, request(vet, "GET", rango + "&q=inexistente", null, 200).size());
+        assertTrue(request(vet, "GET", "/api/agenda/recordatorios?horas=48", null, 200).size() >= 2);
+        // Vincular la cita con la consulta real de la mascota y marcarla atendida.
+        request(vet, "POST", "/api/clinica/consultas", Map.of("mascotaId", mascota, "motivo", "Fiebre", "temperaturaC", 60), 400);  // fuera de rango
+        int consulta = request(vet, "POST", "/api/clinica/consultas", Map.of("mascotaId", mascota, "motivo", "Revisión", "diagnostico", "Otitis leve",
+                "tratamiento", "Gotas", "pesoKg", 12.6, "temperaturaC", 38.6), 201).path("id").asInt();
+        int cita11 = request(vet, "GET", rango + "&estado=PENDIENTE", null, 200).get(0).path("id").asInt();
+        request(vet, "PUT", "/api/agenda/citas/" + cita11 + "/estado", Map.of("estado", "EN_CURSO"), 200);
+        var atendida = request(vet, "PUT", "/api/agenda/citas/" + cita11 + "/atender", Map.of("consultaId", consulta), 200);
+        assertEquals("ATENDIDA", atendida.path("estado").asText()); assertEquals(consulta, atendida.path("consultaId").asInt());
 
         // ---------- Expediente: vacuna, alergia, receta PDF, historial PDF y adjuntos seguros.
         request(vet, "POST", "/api/clinica/expedientes/" + mascota + "/vacunas", Map.of("vacuna", "Rabia", "fechaAplicacion", LocalDate.now(MX).toString(),
@@ -171,7 +191,15 @@ class IntegralPostgresTest {
         assertArrayEquals(png, bajado.body());
         assertEquals("nosniff", bajado.headers().firstValue("X-Content-Type-Options").orElse(""));
         assertEquals(415, multipart(vet, "/api/clinica/expedientes/" + mascota + "/documentos", "factura.pdf", new byte[]{'M', 'Z', 1, 2}).statusCode());
+        request(vet, "POST", "/api/clinica/expedientes/" + mascota + "/preventivos", Map.of("tipo", "DESPARASITACION_INTERNA", "producto", "Praziquantel",
+                "fechaAplicacion", LocalDate.now(MX).toString(), "proximaAplicacion", LocalDate.now(MX).plusMonths(3).toString()), 201);
+        request(vet, "POST", "/api/clinica/expedientes/" + mascota + "/estudios", Map.of("tipo", "Biometría", "resultado", "Valores normales",
+                "fecha", LocalDate.now(MX).toString(), "consultaId", consulta), 201);
+        request(vet, "POST", "/api/clinica/expedientes/" + mascota + "/estudios", Map.of("tipo", "Biometría", "fecha", LocalDate.now(MX).plusDays(2).toString()), 400);
+        assertEquals(1, request(vet, "GET", "/api/clinica/expedientes?q=Firulais", null, 200).size());
+        assertEquals(1, request(vet, "GET", "/api/clinica/expedientes?diagnostico=Otitis", null, 200).size());
         var ficha = request(vet, "GET", "/api/clinica/expedientes/" + mascota, null, 200);
+        assertEquals(1, ficha.path("preventivos").size()); assertEquals(1, ficha.path("estudios").size());
         assertEquals("Penicilina", ficha.path("alertas").get(0).path("descripcion").asText());
         assertEquals(1, ficha.path("documentos").size());
 
@@ -193,6 +221,30 @@ class IntegralPostgresTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(decimal("select cantidad from lote where numero_lote='A-PRONTO'")), "FEFO agota primero el lote que vence antes");
         assertEquals(0, new BigDecimal("4").compareTo(decimal("select cantidad from lote where numero_lote='B-TARDE'")));
         assertEquals(2, count("select count(*) from movimiento_inventario where venta_id=" + venta + " and lote_id is not null"));
+        assertEquals(1, request(admin, "GET", "/api/farmacia/lotes?proveedorId=" + proveedor, null, 200).size(), "Solo B-TARDE conserva existencia");
+        assertEquals(2, request(admin, "GET", "/api/farmacia/lotes?productoId=" + vacuna + "&conExistencia=false", null, 200).size());
+        assertTrue(request(admin, "GET", "/api/farmacia/caducidades?dias=60", null, 200).size() >= 1);
+        int loteB = count("select id from lote where numero_lote='B-TARDE'");
+        request(admin, "PUT", "/api/farmacia/lotes/" + loteB + "/ajuste", Map.of("cantidad", -1, "motivo", "Frasco dañado"), 200);
+        request(admin, "PUT", "/api/farmacia/lotes/" + loteB + "/ajuste", Map.of("cantidad", -50, "motivo", "No negativos"), 409);
+        request(admin, "PUT", "/api/farmacia/lotes/" + loteB + "/ajuste", Map.of("cantidad", 1, "motivo", "Conteo físico"), 200);
+        var margen = request(admin, "GET", "/api/farmacia/margenes", null, 200);
+        boolean conMargen = false; for (JsonNode m : margen) if (m.path("productoId").asInt() == vacuna) { conMargen = true; assertEquals(0, new BigDecimal("45").compareTo(m.path("costo").decimalValue())); }
+        assertTrue(conMargen);
+        assertEquals(0, new BigDecimal("4").compareTo(decimal("select stock_actual from producto where id=" + vacuna)));
+        // Cobros simultáneos de la última pieza: solo uno se cobra y la existencia nunca queda negativa.
+        int ultima = request(admin, "POST", "/api/productos", Map.of("nombre", "Collar única pieza", "codigoBarras", "INT002", "tipo", "PRODUCTO", "precio", 50,
+                "stockActual", 1, "stockMinimo", 0), 200).path("id").asInt();
+        List<Integer> ventasCompetidas = new ArrayList<>();
+        for (int i = 0; i < 4; i++) ventasCompetidas.add(request(caja, "POST", "/api/ventas", Map.of("detalles", List.of(Map.of("productoId", ultima, "cantidad", 1)), "descuento", 0), 201).path("id").asInt());
+        ExecutorService cobros = Executors.newFixedThreadPool(4); CountDownLatch disparo = new CountDownLatch(1); List<Future<Integer>> resultados = new ArrayList<>();
+        for (int id : ventasCompetidas) resultados.add(cobros.submit(() -> { disparo.await(); return raw(caja, "POST", "/api/ventas/" + id + "/cobro", List.of(Map.of("forma", "TARJETA", "monto", 50))).statusCode(); }));
+        disparo.countDown();
+        List<Integer> estados = new ArrayList<>(); for (var f : resultados) estados.add(f.get(30, TimeUnit.SECONDS)); cobros.shutdown();
+        assertEquals(1, Collections.frequency(estados, 200), "Un solo cobro gana: " + estados);
+        assertEquals(0, BigDecimal.ZERO.compareTo(decimal("select stock_actual from producto where id=" + ultima)));
+        assertEquals(1, count("select count(*) from venta where estado='PAGADA' and id in (" + ventasCompetidas.toString().replaceAll("[\\[\\]]", "") + ")"));
+        assertEquals(1, count("select count(distinct venta_id) from pago where venta_id in (" + ventasCompetidas.toString().replaceAll("[\\[\\]]", "") + ")"), "Los cobros perdedores no dejan pagos");
 
         // ---------- Devolución: autorización, límite por lo vendido, reingreso a lote y efectivo del turno.
         request(caja, "POST", "/api/ventas/" + venta + "/devoluciones", Map.of("renglones", List.of(Map.of("productoId", vacuna, "cantidad", 1)),
@@ -219,6 +271,21 @@ class IntegralPostgresTest {
         var xlsx = raw(admin, "GET", "/api/reportes/dashboard.xlsx?desde=" + hoy + "&hasta=" + hoy, null);
         assertEquals("PK", new String(xlsx.body(), 0, 2, StandardCharsets.US_ASCII));
         request(admin, "GET", "/api/reportes/dashboard?desde=" + hoy + "&hasta=" + hoy.minusDays(1), null, 400);
+        assertEquals("Vacuna integral", tablero.path("masVendidos").get(0).path("producto").asText());
+        assertEquals(1, tablero.path("caja").path("turnos").asInt());
+        assertEquals(0, BigDecimal.ZERO.compareTo(request(admin, "GET", "/api/reportes/dashboard?desde=" + hoy + "&hasta=" + hoy + "&tipo=SERVICIO", null, 200)
+                .path("periodo").path("ingresos").decimalValue()), "Filtro por tipo: no hubo servicios vendidos");
+        int cajaId = request(caja, "GET", "/api/auth/sesion", null, 200).path("id").asInt();
+        assertEquals(0, esperado.compareTo(request(admin, "GET", "/api/reportes/dashboard?desde=" + hoy + "&hasta=" + hoy + "&usuarioId=" + cajaId, null, 200)
+                .path("periodo").path("ingresos").decimalValue()), "Todas las ventas las cobró el cajero");
+        var conCitas = request(admin, "GET", "/api/reportes/dashboard?desde=" + hoy + "&hasta=" + manana, null, 200);
+        int citasTablero = 0; for (JsonNode c : conCitas.path("citasPorEstado")) citasTablero += c.path("cantidad").asInt();
+        assertEquals(count("select count(*) from cita"), citasTablero);
+        assertTrue(pdf.headers().firstValue("Content-Disposition").orElse("").contains("REP-"), "El reporte lleva folio");
+        // Factura de demostración: leyenda explícita, sin pretender validez fiscal.
+        var factura = request(admin, "POST", "/api/facturas/venta/" + venta, Map.of("rfcReceptor", "XAXX010101000", "razonSocial", "Público en general",
+                "regimenFiscal", "616", "codigoPostal", "72000", "usoCfdi", "S01", "idempotencia", "int-1"), 201);
+        assertTrue(factura.path("mock").asBoolean()); assertTrue(factura.path("aviso").asText().contains("no es un CFDI timbrado por el SAT"));
 
         // ---------- Auditoría y CSRF.
         var accesos = request(admin, "GET", "/api/auditoria?desde=" + hoy + "&hasta=" + hoy + "&accion=LOGIN_OK", null, 200);
@@ -229,5 +296,21 @@ class IntegralPostgresTest {
                 .POST(HttpRequest.BodyPublishers.ofString("{\"nombre\":\"Sin token\"}")).build();
         assertEquals(403, admin.send(sinToken, HttpResponse.BodyHandlers.discarding()).statusCode());
         assertEquals(1, count("select count(*) from proveedor"));
+
+        // WebSocket: al cerrar sesión, el servidor cierra la conexión de esa caja.
+        var cajaWs = login("int_caja");
+        CompletableFuture<Integer> cerrado = new CompletableFuture<>();
+        var ws = cajaWs.newWebSocketBuilder().buildAsync(URI.create("ws://localhost:" + port + "/ws/caja"), new WebSocket.Listener() {
+            public void onOpen(WebSocket w) { w.request(1); }
+            public CompletionStage<?> onClose(WebSocket w, int codigo, String razon) { cerrado.complete(codigo); return null; }
+            public void onError(WebSocket w, Throwable e) { cerrado.complete(-1); }
+        }).get(5, TimeUnit.SECONDS);
+        request(cajaWs, "POST", "/api/auth/logout", Map.of(), 204);
+        assertEquals(1008, cerrado.get(5, TimeUnit.SECONDS), "Cierre por política al terminar la sesión");
+        ws.abort();
+        // Una sesión por usuario: el segundo inicio de sesión invalida el primero.
+        var admin2 = login("test_admin");
+        request(admin, "GET", "/api/auth/sesion", null, 401);
+        assertEquals("ADMINISTRADOR", request(admin2, "GET", "/api/auth/sesion", null, 200).path("rol").asText());
     }
 }

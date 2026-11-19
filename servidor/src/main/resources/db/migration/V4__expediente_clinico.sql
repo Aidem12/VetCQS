@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS ix_vacuna_mascota ON vacuna (mascota_id, fecha_aplica
 CREATE TABLE IF NOT EXISTS tratamiento_preventivo (
     id                  SERIAL PRIMARY KEY,
     mascota_id          INT          NOT NULL REFERENCES mascota(id),
-    tipo                VARCHAR(20)  NOT NULL CHECK (tipo IN ('DESPARASITACION_INTERNA', 'DESPARASITACION_EXTERNA', 'OTRO')),
+    tipo                VARCHAR(30)  NOT NULL CHECK (tipo IN ('DESPARASITACION_INTERNA', 'DESPARASITACION_EXTERNA', 'OTRO')),
     producto            VARCHAR(120) NOT NULL,
     dosis               VARCHAR(60),
     fecha_aplicacion    DATE         NOT NULL,
